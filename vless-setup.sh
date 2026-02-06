@@ -260,10 +260,11 @@ toggleCdnMode() {
 # --- WARP ---
 applyWarpDomains() {
     [ ! -f "$warpDomainsFile" ] && echo -e "openai.com\nchatgpt.com\ncloudflare.com" > "$warpDomainsFile"
-    local domains_json=$(awk 'NF {printf "\"domain:%s\"," $1}' "$warpDomainsFile" | sed 's/,$//')
+    local domains_json=$(awk 'NF {printf "\"domain:%s\",", $1}' "$warpDomainsFile" | sed 's/,$//')
     jq "(.routing.rules[] | select(.outboundTag == \"warp\")) |= (.domain = [$domains_json] | del(.port))" $configPath > 'config.tmp' && mv 'config.tmp' $configPath
     systemctl restart xray
 }
+
 
 toggleWarpMode() {
     echo "Выберите режим работы WARP:"
