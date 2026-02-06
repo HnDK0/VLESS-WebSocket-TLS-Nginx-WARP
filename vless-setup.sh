@@ -450,7 +450,7 @@ writeXrayConfig() {
         {"tag": "warp", "protocol": "socks", "settings": {"servers": [{"address": "127.0.0.1", "port": 40000}]}}
     ],
     "routing": {
-        "domainStrategy": "AsIs",
+        "domainStrategy": "IPIfNonMatch",
         "rules": [
             {"type": "field", "domain": ["domain:openai.com", "domain:chatgpt.com", "domain:oaistatic.com", "domain:oaiusercontent.com"], "outboundTag": "warp"},
             {"type": "field", "port": "0-65535", "outboundTag": "free"}
