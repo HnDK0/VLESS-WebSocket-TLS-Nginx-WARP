@@ -624,6 +624,7 @@ enableBBR() {
 
 setupFail2Ban() {
     echo -e "${cyan}Настройка Fail2Ban...${reset}"
+    [ -z "$PACKAGE_MANAGEMENT_INSTALL" ] && identifyOS    
     ${PACKAGE_MANAGEMENT_INSTALL} "fail2ban"
     local ssh_port=$(grep "Port " /etc/ssh/sshd_config | awk '{print $2}' || echo "22")
     
