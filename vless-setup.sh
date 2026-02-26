@@ -648,6 +648,9 @@ writeNginxConfig() {
     local proxyUrl="$3"
     local wsPath="$4"
 
+    local proxy_host
+    proxy_host=$(echo "$proxyUrl" | sed 's|https://||;s|http://||;s|/.*||')
+
     setNginxCert
 
     # FIX: worker_rlimit_nofile и keepalive для стабильности под нагрузкой
@@ -751,14 +754,10 @@ server {
     location / {
         proxy_ssl_server_name on;
         proxy_pass $proxyUrl;
-        proxy_set_header Host \$(echo '$proxyUrl' | sed 's|https://||' | cut -d/ -f1);
+        proxy_set_header Host $proxy_host;
     }
 }
 EOF
-    # FIX: Исправляем proxy_set_header Host — нужен реальный hostname цели
-    local proxy_host
-    proxy_host=$(echo "$proxyUrl" | sed 's|https://||;s|http://||;s|/.*||')
-    sed -i "s|\$(echo '\$proxyUrl' .*)|${proxy_host};|" "$nginxPath"
 }
 
 # ============================================================
