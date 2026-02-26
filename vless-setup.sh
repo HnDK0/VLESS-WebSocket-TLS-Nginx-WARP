@@ -796,7 +796,7 @@ getConfigInfo() {
     fi
     xray_uuid=$(jq -r ".inbounds[0].settings.clients[0].id" "$configPath" 2>/dev/null)
     xray_userDomain=$(grep -m 1 -oP "server_name\s+\K\S+" "$nginxPath" 2>/dev/null | grep -v '_' | head -n 1 | tr -d ';')
-    [ -z "$xray_userDomain" ] && xray_userDomain=$(curl -s --connect-timeout 5 https://ip.sb 2>/dev/null)
+    [ -z "$xray_userDomain" ] && xray_userDomain=$(getServerIP)
     xray_path=$(jq -r ".inbounds[0].streamSettings.wsSettings.path" "$configPath" 2>/dev/null)
 }
 
@@ -1103,6 +1103,22 @@ generateRealityKeys() {
     /usr/local/bin/xray x25519 2>/dev/null || { echo "${red}Ошибка генерации ключей Reality${reset}"; return 1; }
 }
 
+getServerIP() {
+    local ip
+    # Пробуем несколько сервисов по очереди
+    for url in "https://api.ipify.org" "https://ipv4.icanhazip.com" "https://checkip.amazonaws.com"; do
+        ip=$(curl -s --connect-timeout 5 "$url" 2>/dev/null | tr -d '[:space:]')
+        # Проверяем что получили валидный IPv4
+        if [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$ip"
+            return
+        fi
+    done
+    # Последний вариант — из сетевых интерфейсов
+    ip=$(ip route get 8.8.8.8 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}')
+    echo "${ip:-UNKNOWN}"
+}
+
 getRealityStatus() {
     if [ -f "$realityConfigPath" ]; then
         local port
@@ -1316,7 +1332,7 @@ showRealityInfo() {
     [ -z "$pubKey" ] && pubKey=$(awk '/PublicKey:/{print $2}' /usr/local/etc/xray/reality_client.txt 2>/dev/null)
 
     local serverIP
-    serverIP=$(curl -s --connect-timeout 5 https://ip.sb 2>/dev/null)
+    serverIP=$(getServerIP)
 
     echo "--------------------------------------------------"
     echo "UUID:        $uuid"
@@ -1344,7 +1360,7 @@ showRealityQR() {
     shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath")
     destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath")
     pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
-    serverIP=$(curl -s --connect-timeout 5 https://ip.sb 2>/dev/null)
+    serverIP=$(getServerIP)
 
     local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#Reality-${serverIP}"
 
