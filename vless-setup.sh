@@ -1553,11 +1553,16 @@ prepareSoftware() {
     run_task "Настройка UFW (22, 443)" "ufw allow 22/tcp && ufw allow 443/tcp && ufw allow 443/udp && echo 'y' | ufw enable"
     cat > /etc/sysctl.d/99-xray.conf << 'SYSCTL'
 net.ipv4.icmp_echo_ignore_all = 1
+net.ipv6.icmp.echo_ignore_all = 1
 net.core.somaxconn = 65535
 net.ipv4.tcp_max_syn_backlog = 65535
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+net.ipv6.conf.lo.disable_ipv6 = 1
 SYSCTL
     sysctl --system &>/dev/null
-    echo "${green}Системные параметры применены.${reset}"
+    sysctl -p /etc/sysctl.d/99-xray.conf &>/dev/null
+    echo "${green}Системные параметры применены (Anti-Ping IPv4+IPv6, IPv6 отключён).${reset}"
 }
 
 install() {
