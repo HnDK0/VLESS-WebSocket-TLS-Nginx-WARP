@@ -357,9 +357,20 @@ applyWarpDomains() {
     [ ! -f "$warpDomainsFile" ] && printf 'openai.com\nchatgpt.com\ncloudflare.com\n' > "$warpDomainsFile"
     local domains_json
     domains_json=$(awk 'NF {printf "\"domain:%s\",", $1}' "$warpDomainsFile" | sed 's/,$//')
-    jq "(.routing.rules[] | select(.outboundTag == \"warp\")) |= (.domain = [$domains_json] | del(.port))" \
-        "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
-    systemctl restart xray
+
+    # Обновляем WS конфиг
+    if [ -f "$configPath" ]; then
+        jq "(.routing.rules[] | select(.outboundTag == \"warp\")) |= (.domain = [$domains_json] | del(.port))" \
+            "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
+        systemctl restart xray 2>/dev/null || true
+    fi
+
+    # Обновляем Reality конфиг
+    if [ -f "$realityConfigPath" ]; then
+        jq "(.routing.rules[] | select(.outboundTag == \"warp\")) |= (.domain = [$domains_json] | del(.port))" \
+            "$realityConfigPath" > "${realityConfigPath}.tmp" && mv "${realityConfigPath}.tmp" "$realityConfigPath"
+        systemctl restart xray-reality 2>/dev/null || true
+    fi
 }
 
 toggleWarpMode() {
@@ -370,25 +381,30 @@ toggleWarpMode() {
 
     case "$warp_mode" in
         1)
-            jq '(.routing.rules[] | select(.outboundTag == "warp")) |= (.port = "0-65535" | del(.domain))' \
-                "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
+            for cfg in "$configPath" "$realityConfigPath"; do
+                [ -f "$cfg" ] || continue
+                jq '(.routing.rules[] | select(.outboundTag == "warp")) |= (.port = "0-65535" | del(.domain))' \
+                    "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+            done
             echo "${green}Global: Весь трафик через WARP.${reset}"
             ;;
         2)
             applyWarpDomains
             echo "${green}Split: Только список доменов через WARP.${reset}"
+            return
             ;;
         *)
             echo "${red}Отмена.${reset}"; return ;;
     esac
-    systemctl restart xray
+    systemctl restart xray 2>/dev/null || true
+    systemctl restart xray-reality 2>/dev/null || true
 }
 
 checkWarpStatus() {
     echo "--------------------------------------------------"
     local real_ip warp_ip
-    real_ip=$(curl -s --connect-timeout 5 https://ip.sb 2>/dev/null || echo "Error")
-    warp_ip=$(curl -s --connect-timeout 5 -x socks5://127.0.0.1:40000 https://ip.sb 2>/dev/null || echo "Error/Offline")
+    real_ip=$(getServerIP)
+    warp_ip=$(curl -s --connect-timeout 5 -x socks5://127.0.0.1:40000 https://api.ipify.org 2>/dev/null | tr -d '[:space:]' || echo "Error/Offline")
     echo "Реальный IP сервера : $real_ip"
     echo "IP через WARP SOCKS : $warp_ip"
     echo "--------------------------------------------------"
