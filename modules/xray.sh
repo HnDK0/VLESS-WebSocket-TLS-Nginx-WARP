@@ -1,0 +1,183 @@
+#!/bin/bash
+# =================================================================
+# xray.sh — Конфиг Xray WS+TLS, изменение параметров, QR-код
+# =================================================================
+
+installXray() {
+    command -v xray &>/dev/null && { echo "info: xray уже установлен."; return; }
+    bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+}
+
+writeXrayConfig() {
+    local xrayPort="$1"
+    local wsPath="$2"
+    local new_uuid
+    new_uuid=$(cat /proc/sys/kernel/random/uuid)
+    mkdir -p /usr/local/etc/xray /var/log/xray
+
+    cat > "$configPath" << EOF
+{
+    "log": {
+        "access": "none",
+        "error": "/var/log/xray/error.log",
+        "loglevel": "error"
+    },
+    "inbounds": [{
+        "port": $xrayPort,
+        "listen": "127.0.0.1",
+        "protocol": "vless",
+        "settings": {
+            "clients": [{"id": "$new_uuid"}],
+            "decryption": "none"
+        },
+        "streamSettings": {
+            "network": "ws",
+            "wsSettings": {
+                "path": "$wsPath",
+                "headers": {}
+            }
+        },
+        "sniffing": {"enabled": false}
+    }],
+    "outbounds": [
+        {
+            "tag": "free",
+            "protocol": "freedom",
+            "settings": {"domainStrategy": "UseIPv4"}
+        },
+        {
+            "tag": "warp",
+            "protocol": "socks",
+            "settings": {"servers": [{"address": "127.0.0.1", "port": 40000}]}
+        },
+        {
+            "tag": "block",
+            "protocol": "blackhole"
+        }
+    ],
+    "routing": {
+        "domainStrategy": "IPIfNonMatch",
+        "rules": [
+            {
+                "type": "field",
+                "ip": ["geoip:private"],
+                "outboundTag": "block"
+            },
+            {
+                "type": "field",
+                "domain": [
+                    "domain:openai.com",
+                    "domain:chatgpt.com",
+                    "domain:oaistatic.com",
+                    "domain:oaiusercontent.com",
+                    "domain:auth0.openai.com"
+                ],
+                "outboundTag": "warp"
+            },
+            {
+                "type": "field",
+                "port": "0-65535",
+                "outboundTag": "free"
+            }
+        ]
+    }
+}
+EOF
+}
+
+getConfigInfo() {
+    [ ! -f "$configPath" ] && { echo "${red}Xray не установлен.${reset}"; return 1; }
+    xray_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$configPath")
+    xray_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$configPath")
+    xray_port=$(jq -r '.inbounds[0].port' "$configPath")
+    xray_userDomain=$(grep 'server_name' "$nginxPath" 2>/dev/null | awk '{print $2}' | tr -d ';' | head -1)
+    [ -z "$xray_userDomain" ] && xray_userDomain=$(getServerIP)
+}
+
+getShareUrl() {
+    getConfigInfo || return 1
+    local encoded_path
+    encoded_path=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$xray_path'))" 2>/dev/null \
+        || echo "$xray_path" | sed 's|/|%2F|g')
+    echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&type=ws&host=${xray_userDomain}&path=${encoded_path}#${xray_userDomain}"
+}
+
+getQrCode() {
+    command -v qrencode &>/dev/null || installPackage "qrencode"
+    local url
+    url=$(getShareUrl) || return 1
+    qrencode -t ANSI "$url"
+    echo -e "\n${green}$url${reset}\n"
+}
+
+modifyXrayUUID() {
+    local new_uuid
+    new_uuid=$(cat /proc/sys/kernel/random/uuid)
+    jq ".inbounds[0].settings.clients[0].id = \"$new_uuid\"" \
+        "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
+    systemctl restart xray
+    echo "${green}New UUID: $new_uuid${reset}"
+}
+
+modifyXrayPort() {
+    local oldPort
+    oldPort=$(jq ".inbounds[0].port" "$configPath")
+    read -rp "New Xray Port [$oldPort]: " xrayPort
+    [ -z "$xrayPort" ] && return
+    if ! [[ "$xrayPort" =~ ^[0-9]+$ ]] || [ "$xrayPort" -lt 1024 ] || [ "$xrayPort" -gt 65535 ]; then
+        echo "${red}Некорректный порт.${reset}"; return 1
+    fi
+    jq ".inbounds[0].port = $xrayPort" \
+        "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
+    sed -i "s|127.0.0.1:${oldPort}|127.0.0.1:${xrayPort}|g" "$nginxPath"
+    systemctl restart xray nginx
+    echo "${green}Порт изменен на $xrayPort${reset}"
+}
+
+modifyWsPath() {
+    local oldPath
+    oldPath=$(jq -r ".inbounds[0].streamSettings.wsSettings.path" "$configPath")
+    read -rp "Новый Path (Enter = случайный): " wsPath
+    [ -z "$wsPath" ] && wsPath=$(generateRandomPath)
+    [[ ! "$wsPath" =~ ^/ ]] && wsPath="/$wsPath"
+
+    local oldPathEscaped newPathEscaped
+    oldPathEscaped=$(echo "$oldPath" | sed 's|/|\\/|g')
+    newPathEscaped=$(echo "$wsPath" | sed 's|/|\\/|g')
+    sed -i "s|location ${oldPathEscaped}|location ${newPathEscaped}|g" "$nginxPath"
+
+    jq ".inbounds[0].streamSettings.wsSettings.path = \"$wsPath\"" \
+        "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
+    systemctl restart xray nginx
+    echo "${green}New Path: $wsPath${reset}"
+}
+
+modifyProxyPassUrl() {
+    read -rp "New Proxy Pass URL (например, https://google.com): " newUrl
+    [ -z "$newUrl" ] && return
+    local oldUrl
+    oldUrl=$(grep "proxy_pass" "$nginxPath" | grep -v "127.0.0.1" | awk '{print $2}' | tr -d ';' | head -1)
+    local oldUrlEscaped newUrlEscaped
+    oldUrlEscaped=$(echo "$oldUrl" | sed 's|[/&]|\\&|g')
+    newUrlEscaped=$(echo "$newUrl" | sed 's|[/&]|\\&|g')
+    sed -i "s|${oldUrlEscaped}|${newUrlEscaped}|g" "$nginxPath"
+    systemctl reload nginx
+    echo "${green}Proxy Pass обновлен.${reset}"
+}
+
+modifyDomain() {
+    getConfigInfo || return 1
+    echo "Текущий домен: $xray_userDomain"
+    read -rp "Введите новый домен: " new_domain
+    [ -z "$new_domain" ] && return
+    sed -i "s/server_name ${xray_userDomain};/server_name ${new_domain};/" "$nginxPath"
+    userDomain="$new_domain"
+    configCert
+    systemctl restart nginx xray
+}
+
+updateXrayCore() {
+    bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
+    systemctl restart xray xray-reality 2>/dev/null || true
+    echo "${green}Xray-core обновлён.${reset}"
+}
