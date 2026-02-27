@@ -86,6 +86,7 @@ menu() {
     clear
     while true; do
         local s_nginx s_xray s_warp s_ssl s_bbr s_f2b s_jail s_cdn s_reality s_relay s_psiphon
+        clear
         s_nginx=$(getServiceStatus nginx)
         s_xray=$(getServiceStatus xray)
         s_warp=$(getWarpStatus)
@@ -98,8 +99,6 @@ menu() {
         s_relay=$(getRelayStatus)
         s_psiphon=$(getPsiphonStatus)
         s_tor=$(getTorStatus)
-        # Перемещаем курсор в начало без очистки — нет мигания
-        tput cup 0 0
 
         echo -e "${cyan}================================================================${reset}"
         echo -e "   ${red}XRAY VLESS + WARP + CDN + REALITY${reset} | $(date +'%d.%m.%Y %H:%M')"
@@ -121,7 +120,7 @@ menu() {
         echo -e "\t${green}8.${reset}  Сменить домен"
         echo -e "\t—————————————— CDN и WARP ———————————————"
         echo -e "\t${green}9.${reset}  Переключить CDN режим (ON/OFF)"
-        echo -e "\t${green}10.${reset} Переключить режим WARP (Global/Split)"
+        echo -e "\t${green}10.${reset} Переключить режим WARP (Global/Split/OFF)"
         echo -e "\t${green}11.${reset} Добавить домен в WARP"
         echo -e "\t${green}12.${reset} Удалить домен из WARP"
         echo -e "\t${green}13.${reset} Редактировать список WARP (Nano)"
@@ -194,10 +193,6 @@ menu() {
             34) manageTor ;;
             0)  exit 0 ;;
             *)  echo -e "${red}Неверный пункт!${reset}"; sleep 1 ;;
-        esac
-        # Для подменю после возврата — сразу перерисовываем без Enter
-        case $num in
-            31|32|33|34) tput clear; continue ;;
         esac
         echo -e "\n${cyan}Нажмите Enter...${reset}"
         read -r

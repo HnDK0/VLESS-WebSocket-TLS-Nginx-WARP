@@ -224,7 +224,7 @@ manageRelay() {
         fi
         echo ""
         echo -e "${green}1.${reset} Настроить реле (вставить ссылку)"
-        echo -e "${green}2.${reset} Переключить режим (Global/Split)"
+        echo -e "${green}2.${reset} Переключить режим (Global/Split/OFF)"
         echo -e "${green}3.${reset} Добавить домен в список"
         echo -e "${green}4.${reset} Удалить домен из списка"
         echo -e "${green}5.${reset} Редактировать список доменов (Nano)"
@@ -252,6 +252,7 @@ manageRelay() {
                     1) toggleRelayGlobal ;;
                     2) applyRelayDomains ;;
                     3) removeRelayFromConfigs; echo "${green}Реле отключено от Xray.${reset}" ;;
+                    0) continue ;;
                 esac
                 ;;
             3)

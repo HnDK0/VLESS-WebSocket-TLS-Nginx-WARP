@@ -288,7 +288,7 @@ managePsiphon() {
         fi
         echo ""
         echo -e "${green}1.${reset} Установить Psiphon"
-        echo -e "${green}2.${reset} Переключить режим (Global/Split)"
+        echo -e "${green}2.${reset} Переключить режим (Global/Split/OFF)"
         echo -e "${green}3.${reset} Добавить домен в список"
         echo -e "${green}4.${reset} Удалить домен из списка"
         echo -e "${green}5.${reset} Редактировать список доменов (Nano)"
@@ -313,6 +313,7 @@ managePsiphon() {
                     1) togglePsiphonGlobal ;;
                     2) applyPsiphonDomains ;;
                     3) removePsiphonFromConfigs; echo "${green}Psiphon отключён от Xray.${reset}" ;;
+                    0) continue ;;
                 esac
                 ;;
             3)

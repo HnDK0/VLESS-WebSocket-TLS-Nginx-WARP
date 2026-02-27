@@ -377,7 +377,7 @@ manageTor() {
         fi
         echo ""
         echo -e "${green}1.${reset} Установить Tor"
-        echo -e "${green}2.${reset} Переключить режим (Global/Split)"
+        echo -e "${green}2.${reset} Переключить режим (Global/Split/OFF)"
         echo -e "${green}3.${reset} Добавить домен в список"
         echo -e "${green}4.${reset} Удалить домен из списка"
         echo -e "${green}5.${reset} Редактировать список доменов (Nano)"
@@ -405,6 +405,7 @@ manageTor() {
                     1) toggleTorGlobal ;;
                     2) applyTorDomains ;;
                     3) removeTorFromConfigs; echo "${green}Tor отключён от Xray.${reset}" ;;
+                    0) continue ;;
                 esac
                 ;;
             3)
