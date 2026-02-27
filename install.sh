@@ -18,7 +18,7 @@ green=$(tput setaf 2 && tput bold 2>/dev/null || echo "")
 cyan=$(tput setaf 6 && tput bold 2>/dev/null || echo "")
 reset=$(tput sgr0 2>/dev/null || echo "")
 
-MODULES="core xray nginx warp reality relay psiphon tor security logs menu"
+MODULES="lang core xray nginx warp reality relay psiphon tor security logs menu"
 UPDATE_ONLY=false
 
 # Парсим аргументы
@@ -30,20 +30,20 @@ done
 
 check_root() {
     if [ "$EUID" -ne 0 ]; then
-        echo "${red}Запустите от root!${reset}"
+        echo "${red}$(msg run_as_root)${reset}"
         exit 1
     fi
 }
 
 check_os() {
     if ! command -v apt &>/dev/null && ! command -v dnf &>/dev/null && ! command -v yum &>/dev/null; then
-        echo "${red}Поддерживаются только apt/dnf/yum системы.${reset}"
+        echo "${red}$(msg os_unsupported)${reset}"
         exit 1
     fi
 }
 
 install_deps() {
-    echo -e "${cyan}Установка зависимостей...${reset}"
+    echo -e "${cyan}$(msg install_deps)${reset}"
     if command -v apt &>/dev/null; then
         apt-get update -qq
         apt-get install -y --no-install-recommends curl jq bash coreutils 2>/dev/null || true
@@ -55,18 +55,18 @@ install_deps() {
 }
 
 download_modules() {
-    echo -e "${cyan}Загрузка модулей...${reset}"
+    echo -e "${cyan}$(msg install_modules)${reset}"
     mkdir -p "$VWN_LIB"
 
     for module in $MODULES; do
-        echo -n "  Загрузка ${module}.sh... "
+        echo -n "  $(msg loading) ${module}.sh... "
         if curl -fsSL --connect-timeout 15 \
             "${GITHUB_RAW}/modules/${module}.sh" \
             -o "${VWN_LIB}/${module}.sh" 2>/dev/null; then
             echo "${green}OK${reset}"
         else
-            echo "${red}ОШИБКА${reset}"
-            echo "Не удалось загрузить ${module}.sh"
+            echo "${red}$(msg error)${reset}"
+            echo "$(msg module_fail) ${module}.sh"
             return 1
         fi
         chmod 644 "${VWN_LIB}/${module}.sh"
@@ -74,7 +74,7 @@ download_modules() {
 }
 
 install_vwn_binary() {
-    echo -e "${cyan}Установка загрузчика vwn...${reset}"
+    echo -e "${cyan}$(msg install_vwn)${reset}"
     curl -fsSL --connect-timeout 15 \
         "${GITHUB_RAW}/vwn" \
         -o "$VWN_BIN" 2>/dev/null || {
@@ -95,14 +95,14 @@ case "${1:-}" in
         exit 0 ;;
 esac
 for module in core xray nginx warp reality relay psiphon tor security logs menu; do
-    [ -f "$VWN_LIB/${module}.sh" ] && source "$VWN_LIB/${module}.sh" || { echo "ERROR: $module не найден"; exit 1; }
+    [ -f "$VWN_LIB/${module}.sh" ] && source "$VWN_LIB/${module}.sh" || { echo "ERROR: module $module not found"; exit 1; }
 done
 isRoot
 menu "$@"
 VWNEOF
     }
     chmod +x "$VWN_BIN"
-    echo "${green}vwn установлен в $VWN_BIN${reset}"
+    echo "${green}vwn $(msg installed_in) $VWN_BIN${reset}"
 }
 
 show_version() {
@@ -118,9 +118,9 @@ main() {
 
     echo -e "${cyan}================================================================${reset}"
     if $UPDATE_ONLY; then
-        echo -e "   VWN — Обновление модулей"
+        echo -e "   $(msg update_title)"
     else
-        echo -e "   VWN — Установщик Xray VLESS + WARP + CDN + Reality"
+        echo -e "   $(msg install_title)"
     fi
     echo -e "${cyan}================================================================${reset}"
     echo ""
@@ -128,21 +128,21 @@ main() {
     install_deps
 
     if $UPDATE_ONLY; then
-        echo -e "${cyan}Обновление модулей (конфиги не затрагиваются)...${reset}"
+        echo -e "${cyan}$(msg update_modules)${reset}"
         download_modules || exit 1
         install_vwn_binary
-        echo -e "\n${green}Обновление завершено! Версия: $(show_version)${reset}"
-        echo "Запустите: vwn"
+        echo -e "\n${green}$(msg update_done): $(show_version)${reset}"
+        echo "$(msg run_vwn)"
     else
         download_modules || exit 1
         install_vwn_binary
 
         echo -e "\n${green}================================================================${reset}"
-        echo -e "   Модули установлены в $VWN_LIB"
-        echo -e "   Версия: $(show_version)"
+        echo -e "   $(msg install_done) $VWN_LIB"
+        echo -e "   $(msg install_version): $(show_version)"
         echo -e "${green}================================================================${reset}"
         echo ""
-        echo -e "Запускаем меню установки...\n"
+        echo -e "$(msg launching_menu)\n"
         sleep 1
         exec "$VWN_BIN"
     fi

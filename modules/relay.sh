@@ -18,7 +18,7 @@ getRelayStatus() {
     case "$mode" in
         Global) echo "${green}ON | Global ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT)${reset}" ;;
         Split)  echo "${green}ON | Split ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT)${reset}" ;;
-        *)      echo "${yellow}ON | маршрут OFF ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT)${reset}" ;;
+        *)      echo "${yellow}ON | $(msg mode_off) ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT)${reset}" ;;
     esac
 }
 
@@ -61,10 +61,10 @@ parseRelayUrl() {
             security=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tls','none'))" 2>/dev/null)
             ;;
         *)
-            echo "${red}Неизвестный протокол: $protocol${reset}"; return 1 ;;
+            echo "${red}$(msg relay_unknown_proto): $protocol${reset}"; return 1 ;;
     esac
 
-    [ -z "$host" ] || [ -z "$port" ] && { echo "${red}Не удалось распарсить адрес/порт.${reset}"; return 1; }
+    [ -z "$host" ] || [ -z "$port" ] && { echo "${red}$(msg relay_parse_fail)${reset}"; return 1; }
 
     cat > "$relayConfigFile" << RELAYEOF
 RELAY_PROTOCOL=${protocol}
@@ -79,7 +79,7 @@ RELAY_NET=${net_type:-tcp}
 RELAY_PATH=${path:-/}
 RELAY_WS_HOST=${ws_host:-${host}}
 RELAYEOF
-    echo "${green}Реле настроено: $protocol://$host:$port${reset}"
+    echo "${green}$(msg relay_configured): $protocol://$host:$port${reset}"
 }
 
 buildRelayOutbound() {
@@ -115,7 +115,7 @@ buildRelayOutbound() {
 }
 
 applyRelayToConfigs() {
-    [ ! -f "$relayConfigFile" ] && { echo "${red}Реле не настроено.${reset}"; return 1; }
+    [ ! -f "$relayConfigFile" ] && { echo "${red}$(msg relay_not_configured)${reset}"; return 1; }
     local relay_outbound
     relay_outbound=$(buildRelayOutbound) || return 1
 
@@ -140,7 +140,7 @@ applyRelayToConfigs() {
 }
 
 applyRelayDomains() {
-    [ ! -f "$relayConfigFile" ] && { echo "${red}Реле не настроено.${reset}"; return 1; }
+    [ ! -f "$relayConfigFile" ] && { echo "${red}$(msg relay_not_configured)${reset}"; return 1; }
     [ ! -f "$relayDomainsFile" ] && touch "$relayDomainsFile"
     local domains_json
     domains_json=$(awk 'NF {printf "\"domain:%s\",", $1}' "$relayDomainsFile" | sed 's/,$//')
@@ -152,7 +152,7 @@ applyRelayDomains() {
     done
     systemctl restart xray 2>/dev/null || true
     systemctl restart xray-reality 2>/dev/null || true
-    echo "${green}Relay Split применён.${reset}"
+    echo "${green}$(msg relay_split_ok)${reset}"
 }
 
 toggleRelayGlobal() {
@@ -164,7 +164,7 @@ toggleRelayGlobal() {
     done
     systemctl restart xray 2>/dev/null || true
     systemctl restart xray-reality 2>/dev/null || true
-    echo "${green}Relay Global: весь трафик через реле.${reset}"
+    echo "${green}$(msg relay_global_ok)${reset}"
 }
 
 removeRelayFromConfigs() {
@@ -178,14 +178,14 @@ removeRelayFromConfigs() {
 }
 
 checkRelayIP() {
-    [ ! -f "$relayConfigFile" ] && { echo "${red}Реле не настроено.${reset}"; return 1; }
+    [ ! -f "$relayConfigFile" ] && { echo "${red}$(msg relay_not_configured)${reset}"; return 1; }
     source "$relayConfigFile"
-    echo "Реальный IP сервера : $(getServerIP)"
-    echo "Проверка через реле..."
+    echo "$(msg relay_real_ip) : $(getServerIP)"
+    echo "$(msg relay_checking)"
 
     local relay_ip
     if [ "$RELAY_PROTOCOL" = "socks" ]; then
-        relay_ip=$(curl -s --connect-timeout 8 -x "socks5://$RELAY_HOST:$RELAY_PORT" https://api.ipify.org 2>/dev/null || echo "Недоступен")
+        relay_ip=$(curl -s --connect-timeout 8 -x "socks5://$RELAY_HOST:$RELAY_PORT" https://api.ipify.org 2>/dev/null || echo "$(msg unavailable)")
     else
         local relay_outbound
         relay_outbound=$(buildRelayOutbound)
@@ -203,71 +203,71 @@ TESTEOF
         /usr/local/bin/xray run -config /tmp/relay_test.json &>/dev/null &
         local xray_pid=$!
         sleep 3
-        relay_ip=$(curl -s --connect-timeout 10 -x socks5://127.0.0.1:19999 https://api.ipify.org 2>/dev/null || echo "Недоступен")
+        relay_ip=$(curl -s --connect-timeout 10 -x socks5://127.0.0.1:19999 https://api.ipify.org 2>/dev/null || echo "$(msg unavailable)")
         kill $xray_pid 2>/dev/null
         rm -f /tmp/relay_test.json
     fi
-    echo "IP через реле       : $relay_ip"
+    echo "$(msg relay_ip) : $relay_ip"
 }
 
 manageRelay() {
     set +e
     while true; do
         clear
-        echo -e "${cyan}=== Управление Relay ===${reset}"
-        echo -e "Статус: $(getRelayStatus)"
+        echo -e "${cyan}$(msg relay_title)${reset}"
+        echo -e "$(msg status): $(getRelayStatus)"
         echo ""
         if [ -f "$relayConfigFile" ]; then
             source "$relayConfigFile"
-            echo -e "  Сервер: ${green}$RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT${reset}"
-            [ -f "$relayDomainsFile" ] && echo -e "  Доменов: $(wc -l < "$relayDomainsFile")"
+            echo -e "  $(msg relay_server): ${green}$RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT${reset}"
+            [ -f "$relayDomainsFile" ] && echo -e "  $(msg domains_count): $(wc -l < "$relayDomainsFile")"
         fi
         echo ""
-        echo -e "${green}1.${reset} Настроить реле (вставить ссылку)"
-        echo -e "${green}2.${reset} Переключить режим (Global/Split/OFF)"
-        echo -e "${green}3.${reset} Добавить домен в список"
-        echo -e "${green}4.${reset} Удалить домен из списка"
-        echo -e "${green}5.${reset} Редактировать список доменов (Nano)"
-        echo -e "${green}6.${reset} Проверить IP через реле"
-        echo -e "${green}7.${reset} Удалить реле"
-        echo -e "${green}0.${reset} Назад"
+        echo -e "${green}1.${reset} $(msg relay_setup)"
+        echo -e "${green}2.${reset} $(msg relay_mode)"
+        echo -e "${green}3.${reset} $(msg relay_add)"
+        echo -e "${green}4.${reset} $(msg relay_del)"
+        echo -e "${green}5.${reset} $(msg relay_edit)"
+        echo -e "${green}6.${reset} $(msg relay_check)"
+        echo -e "${green}7.${reset} $(msg relay_remove)"
+        echo -e "${green}0.${reset} $(msg back)"
         echo ""
-        read -rp "Выберите: " choice
+        read -rp "$(msg choose)" choice
         case $choice in
             1)
-                echo "Вставьте ссылку (vless:// vmess:// trojan:// socks5://):"
+                echo "$(msg relay_paste_url)"
                 read -rp "> " relay_url
                 [ -z "$relay_url" ] && continue
                 parseRelayUrl "$relay_url" || { read -r; continue; }
                 applyRelayDomains
                 ;;
             2)
-                [ ! -f "$relayConfigFile" ] && { echo "${red}Сначала настройте реле (п.1)${reset}"; read -r; continue; }
-                echo "1) Global — весь трафик через реле"
-                echo "2) Split — только список доменов"
-                echo "3) OFF — отключить реле от Xray"
-                echo "0) Назад"
+                [ ! -f "$relayConfigFile" ] && { echo "${red}$(msg relay_setup_first)${reset}"; read -r; continue; }
+                echo "$(msg relay_mode_1)"
+                echo "$(msg relay_mode_2)"
+                echo "$(msg relay_mode_3)"
+                echo "$(msg back)"
                 read -rp "Выбор: " mode
                 case "$mode" in
                     1) toggleRelayGlobal ;;
                     2) applyRelayDomains ;;
-                    3) removeRelayFromConfigs; echo "${green}Реле отключено от Xray.${reset}" ;;
+                    3) removeRelayFromConfigs; echo "${green}$(msg relay_off_ok)${reset}" ;;
                     0) continue ;;
                 esac
                 ;;
             3)
-                [ ! -f "$relayConfigFile" ] && { echo "${red}Сначала настройте реле (п.1)${reset}"; read -r; continue; }
-                read -rp "Домен (например netflix.com): " domain
+                [ ! -f "$relayConfigFile" ] && { echo "${red}$(msg relay_setup_first)${reset}"; read -r; continue; }
+                read -rp "$(msg relay_domain_prompt)" domain
                 [ -z "$domain" ] && continue
                 echo "$domain" >> "$relayDomainsFile"
                 sort -u "$relayDomainsFile" -o "$relayDomainsFile"
                 applyRelayDomains
-                echo "${green}Домен $domain добавлен.${reset}"
+                echo "${green}$(msg relay_domain_added)${reset}"
                 ;;
             4)
-                [ ! -f "$relayDomainsFile" ] && { echo "Список пуст"; read -r; continue; }
+                [ ! -f "$relayDomainsFile" ] && { echo "$(msg warp_list_empty)"; read -r; continue; }
                 nl "$relayDomainsFile"
-                read -rp "Номер для удаления: " num
+                read -rp "$(msg warp_domain_del)" num
                 [[ "$num" =~ ^[0-9]+$ ]] && sed -i "${num}d" "$relayDomainsFile" && applyRelayDomains
                 ;;
             5)
@@ -277,18 +277,18 @@ manageRelay() {
                 ;;
             6) checkRelayIP ;;
             7)
-                echo -e "${red}Удалить реле? (y/n)${reset}"
+                echo -e "${red}$(msg relay_remove_confirm) $(msg yes_no)${reset}"
                 read -r confirm
                 if [[ "$confirm" == "y" ]]; then
                     removeRelayFromConfigs
                     rm -f "$relayConfigFile"
-                    echo "${green}Реле удалено.${reset}"
+                    echo "${green}$(msg relay_removed)${reset}"
                 fi
                 ;;
             0) break ;;
         esac
         [ "${choice}" = "0" ] && continue
-        echo -e "\n${cyan}Нажмите Enter...${reset}"
+        echo -e "\n${cyan}$(msg press_enter)${reset}"
         read -r
     done
 }

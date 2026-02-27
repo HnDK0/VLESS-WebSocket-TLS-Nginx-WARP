@@ -4,7 +4,7 @@
 # =================================================================
 
 installWarp() {
-    command -v warp-cli &>/dev/null && { echo "info: warp-cli уже установлен."; return; }
+    command -v warp-cli &>/dev/null && { echo "info: warp-cli already installed."; return; }
     [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
     if command -v apt &>/dev/null; then
         curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg \
@@ -42,9 +42,9 @@ configWarp() {
     warp_check=$(curl -s --connect-timeout 8 -x socks5://127.0.0.1:40000 \
         https://www.cloudflare.com/cdn-cgi/trace/ 2>/dev/null | grep 'warp=')
     if [[ "$warp_check" == *"warp=on"* ]] || [[ "$warp_check" == *"warp=plus"* ]]; then
-        echo "${green}WARP успешно подключен!${reset}"
+        echo "${green}$(msg warp_connected)${reset}"
     else
-        echo "${yellow}WARP запущен, но проверка не прошла. Продолжаем...${reset}"
+        echo "${yellow}$(msg warp_started)${reset}"
     fi
 }
 
@@ -63,11 +63,11 @@ applyWarpDomains() {
 }
 
 toggleWarpMode() {
-    echo "Выберите режим работы WARP:"
-    echo "1) Global — весь трафик через WARP"
-    echo "2) Split — только список доменов"
-    echo "3) OFF — отключить WARP от Xray"
-    echo "0) Назад"
+    echo "$(msg warp_mode_choose)"
+    echo "$(msg warp_mode_1)"
+    echo "$(msg warp_mode_2)"
+    echo "$(msg warp_mode_3)"
+    echo "$(msg warp_mode_0)"
     read -rp "Ваш выбор: " warp_mode
 
     case "$warp_mode" in
@@ -77,13 +77,13 @@ toggleWarpMode() {
                 jq '(.routing.rules[] | select(.outboundTag == "warp")) |= (.port = "0-65535" | del(.domain))' \
                     "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
             done
-            echo "${green}Global: Весь трафик через WARP.${reset}"
+            echo "${green}$(msg warp_global_ok)${reset}"
             systemctl restart xray 2>/dev/null || true
             systemctl restart xray-reality 2>/dev/null || true
             ;;
         2)
             applyWarpDomains
-            echo "${green}Split: Только список доменов через WARP.${reset}"
+            echo "${green}$(msg warp_split_ok)${reset}"
             ;;
         3)
             for cfg in "$configPath" "$realityConfigPath"; do
@@ -91,12 +91,12 @@ toggleWarpMode() {
                 jq 'del(.routing.rules[] | select(.outboundTag == "warp"))' \
                     "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
             done
-            echo "${green}WARP отключён от Xray.${reset}"
+            echo "${green}$(msg warp_off_ok)${reset}"
             systemctl restart xray 2>/dev/null || true
             systemctl restart xray-reality 2>/dev/null || true
             ;;
         0) return 0 ;;
-        *) echo "${red}Отмена.${reset}" ;;
+        *) echo "${red}$(msg cancel)${reset}" ;;
     esac
 }
 
@@ -105,34 +105,34 @@ checkWarpStatus() {
     local real_ip warp_ip
     real_ip=$(getServerIP)
     warp_ip=$(curl -s --connect-timeout 5 -x socks5://127.0.0.1:40000 https://api.ipify.org 2>/dev/null | tr -d '[:space:]' || echo "Error/Offline")
-    echo "Реальный IP сервера : $real_ip"
-    echo "IP через WARP SOCKS : $warp_ip"
+    echo "$(msg warp_real_ip) : $real_ip"
+    echo "$(msg warp_ip) : $warp_ip"
     echo "--------------------------------------------------"
 }
 
 addDomainToWarpProxy() {
-    read -rp "Домен для WARP (например, netflix.com): " domain
+    read -rp "$(msg warp_domain_add)" domain
     [ -z "$domain" ] && return
     [ ! -f "$warpDomainsFile" ] && touch "$warpDomainsFile"
     if ! grep -q "^${domain}$" "$warpDomainsFile"; then
         echo "$domain" >> "$warpDomainsFile"
         sort -u "$warpDomainsFile" -o "$warpDomainsFile"
         applyWarpDomains
-        echo "${green}Домен $domain добавлен.${reset}"
+        echo "${green}$(msg warp_domain_added)${reset}"
     else
-        echo "${yellow}Домен уже в списке.${reset}"
+        echo "${yellow}$(msg warp_domain_exists)${reset}"
     fi
 }
 
 deleteDomainFromWarpProxy() {
-    if [ ! -f "$warpDomainsFile" ]; then echo "Список пуст"; return; fi
-    echo "Текущие домены в WARP:"
+    if [ ! -f "$warpDomainsFile" ]; then echo "$(msg warp_list_empty)"; return; fi
+    echo "$(msg current) WARP:"
     nl "$warpDomainsFile"
-    read -rp "Введите номер для удаления: " num
+    read -rp "$(msg warp_domain_del)" num
     if [[ "$num" =~ ^[0-9]+$ ]]; then
         sed -i "${num}d" "$warpDomainsFile"
         applyWarpDomains
-        echo "${green}Домен удален.${reset}"
+        echo "${green}$(msg warp_domain_removed)${reset}"
     fi
 }
 
@@ -169,5 +169,5 @@ WDOG
 */2 * * * * root /usr/local/bin/warp-watchdog.sh
 EOF
     chmod 644 /etc/cron.d/warp-watchdog
-    echo "${green}WARP watchdog установлен.${reset}"
+    echo "${green}$(msg warp_watchdog_ok)${reset}"
 }

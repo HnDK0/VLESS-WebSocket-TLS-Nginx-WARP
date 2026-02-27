@@ -118,7 +118,7 @@ EOF
 }
 
 setupCloudflareIPs() {
-    echo -e "${cyan}Настройка Cloudflare IP...${reset}"
+    echo -e "${cyan}$(msg cf_ips_setup)${reset}"
     local tmp_r tmp_w
     tmp_r=$(mktemp) && tmp_w=$(mktemp) || return 1
     trap 'rm -f "$tmp_r" "$tmp_w"' RETURN
@@ -144,7 +144,7 @@ GEOHDR
         done < <(echo "$result" | grep -E '^[0-9a-fA-F:.]+(/[0-9]+)?$')
     done
 
-    [ "$ok" -eq 0 ] && { echo "${red}Ошибка: не получен ни один IP Cloudflare.${reset}"; return 1; }
+    [ "$ok" -eq 0 ] && { echo "${red}$(msg cf_ips_fail)${reset}"; return 1; }
 
     echo "real_ip_header CF-Connecting-IP;" >> "$tmp_r"
     echo "real_ip_recursive on;" >> "$tmp_r"
@@ -160,13 +160,13 @@ GEOHDR
         fi
     done
 
-    nginx -t 2>/dev/null || { echo "${red}Ошибка синтаксиса nginx!${reset}"; nginx -t; return 1; }
-    echo "${green}Cloudflare IPs настроены.${reset}"
+    nginx -t 2>/dev/null || { echo "${red}$(msg nginx_syntax_err)${reset}"; nginx -t; return 1; }
+    echo "${green}$(msg cf_ips_ok)${reset}"
 }
 
 toggleCdnMode() {
     if [ -f /etc/nginx/conf.d/cloudflare_whitelist.conf ]; then
-        echo -e "${yellow}CDN режим активен. Отключить? (y/n)${reset}"
+        echo -e "${yellow}$(msg cdn_disable_confirm) $(msg yes_no)${reset}"
         read -r confirm
         if [[ "$confirm" == "y" ]]; then
             rm -f /etc/nginx/conf.d/cloudflare_whitelist.conf
@@ -174,10 +174,10 @@ toggleCdnMode() {
             sed -i '/cloudflare_real_ips\|cloudflare_whitelist/d' /etc/nginx/nginx.conf 2>/dev/null || true
             sed -i '/cloudflare_ip.*!=.*1/d' "$nginxPath" 2>/dev/null || true
             nginx -t && systemctl reload nginx
-            echo "${green}CDN режим отключен.${reset}"
+            echo "${green}$(msg cdn_disabled)${reset}"
         fi
     else
-        echo -e "${cyan}Включение CDN режима...${reset}"
+        echo -e "${cyan}$(msg cdn_enabling)${reset}"
         setupCloudflareIPs || return 1
         local wsPath
         wsPath=$(jq -r ".inbounds[0].streamSettings.wsSettings.path" "$configPath" 2>/dev/null)
@@ -194,9 +194,9 @@ with open(path, 'w') as f: f.write(new_content)
 PYEOF
             fi
         fi
-        nginx -t || { echo "${red}Ошибка синтаксиса nginx!${reset}"; nginx -t; return 1; }
+        nginx -t || { echo "${red}$(msg nginx_syntax_err)${reset}"; nginx -t; return 1; }
         systemctl reload nginx
-        echo "${green}CDN режим включён.${reset}"
+        echo "${green}$(msg cdn_enabled)${reset}"
     fi
 }
 
@@ -214,14 +214,14 @@ closePort80() {
 
 configCert() {
     if [[ -z "${userDomain:-}" ]]; then
-        read -rp "Введите домен для выпуска SSL: " userDomain
+        read -rp "$(msg ssl_enter_domain)" userDomain
     fi
-    [ -z "$userDomain" ] && { echo "${red}Домен не задан.${reset}"; return 1; }
+    [ -z "$userDomain" ] && { echo "${red}$(msg ssl_domain_empty)${reset}"; return 1; }
 
-    echo -e "\n${cyan}Метод SSL:${reset}"
-    echo "1) Cloudflare DNS API (порт 80 не нужен)"
-    echo "2) Standalone (временно открыть порт 80)"
-    read -rp "Ваш выбор: " cert_method
+    echo -e "\n${cyan}$(msg ssl_method)${reset}"
+    echo "$(msg ssl_method_1)"
+    echo "$(msg ssl_method_2)"
+    read -rp "$(msg ssl_your_choice)" cert_method
 
     installPackage "socat" || true
     if [ ! -f ~/.acme.sh/acme.sh ]; then
@@ -234,8 +234,8 @@ configCert() {
     if [ "$cert_method" == "1" ]; then
         [ -f "$cf_key_file" ] && source "$cf_key_file"
         if [[ -z "${CF_Email:-}" || -z "${CF_Key:-}" ]]; then
-            read -rp "Cloudflare Email: " CF_Email
-            read -rp "Cloudflare Global API Key: " CF_Key
+            read -rp "$(msg ssl_cf_email)" CF_Email
+            read -rp "$(msg ssl_cf_key)" CF_Key
             printf "export CF_Email='%s'\nexport CF_Key='%s'\n" "$CF_Email" "$CF_Key" > "$cf_key_file"
             chmod 600 "$cf_key_file"
         fi
@@ -256,5 +256,5 @@ configCert() {
         --fullchain-file /etc/nginx/cert/cert.pem \
         --reloadcmd "systemctl reload nginx"
 
-    echo "${green}SSL успешно настроен для $userDomain${reset}"
+    echo "${green}$(msg ssl_success) $userDomain${reset}"
 }

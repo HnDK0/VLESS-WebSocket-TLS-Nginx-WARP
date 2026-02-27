@@ -4,7 +4,7 @@
 # =================================================================
 
 installXray() {
-    command -v xray &>/dev/null && { echo "info: xray уже установлен."; return; }
+    command -v xray &>/dev/null && { echo "info: xray already installed."; return; }
     bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 }
 
@@ -86,7 +86,7 @@ EOF
 }
 
 getConfigInfo() {
-    [ ! -f "$configPath" ] && { echo "${red}Xray не установлен.${reset}"; return 1; }
+    [ ! -f "$configPath" ] && { echo "${red}$(msg xray_not_installed)${reset}"; return 1; }
     xray_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$configPath")
     xray_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$configPath")
     xray_port=$(jq -r '.inbounds[0].port' "$configPath")
@@ -116,28 +116,28 @@ modifyXrayUUID() {
     jq ".inbounds[0].settings.clients[0].id = \"$new_uuid\"" \
         "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
     systemctl restart xray
-    echo "${green}New UUID: $new_uuid${reset}"
+    echo "${green}$(msg new_uuid): $new_uuid${reset}"
 }
 
 modifyXrayPort() {
     local oldPort
     oldPort=$(jq ".inbounds[0].port" "$configPath")
-    read -rp "New Xray Port [$oldPort]: " xrayPort
+    read -rp "$(msg enter_new_port) [$oldPort]: " xrayPort
     [ -z "$xrayPort" ] && return
     if ! [[ "$xrayPort" =~ ^[0-9]+$ ]] || [ "$xrayPort" -lt 1024 ] || [ "$xrayPort" -gt 65535 ]; then
-        echo "${red}Некорректный порт.${reset}"; return 1
+        echo "${red}$(msg invalid_port)${reset}"; return 1
     fi
     jq ".inbounds[0].port = $xrayPort" \
         "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
     sed -i "s|127.0.0.1:${oldPort}|127.0.0.1:${xrayPort}|g" "$nginxPath"
     systemctl restart xray nginx
-    echo "${green}Порт изменен на $xrayPort${reset}"
+    echo "${green}$(msg port_changed) $xrayPort${reset}"
 }
 
 modifyWsPath() {
     local oldPath
     oldPath=$(jq -r ".inbounds[0].streamSettings.wsSettings.path" "$configPath")
-    read -rp "Новый Path (Enter = случайный): " wsPath
+    read -rp "$(msg enter_new_path)" wsPath
     [ -z "$wsPath" ] && wsPath=$(generateRandomPath)
     [[ ! "$wsPath" =~ ^/ ]] && wsPath="/$wsPath"
 
@@ -149,11 +149,11 @@ modifyWsPath() {
     jq ".inbounds[0].streamSettings.wsSettings.path = \"$wsPath\"" \
         "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
     systemctl restart xray nginx
-    echo "${green}New Path: $wsPath${reset}"
+    echo "${green}$(msg new_path): $wsPath${reset}"
 }
 
 modifyProxyPassUrl() {
-    read -rp "New Proxy Pass URL (например, https://google.com): " newUrl
+    read -rp "$(msg enter_proxy_url)" newUrl
     [ -z "$newUrl" ] && return
     local oldUrl
     oldUrl=$(grep "proxy_pass" "$nginxPath" | grep -v "127.0.0.1" | awk '{print $2}' | tr -d ';' | head -1)
@@ -162,13 +162,13 @@ modifyProxyPassUrl() {
     newUrlEscaped=$(echo "$newUrl" | sed 's|[/&]|\\&|g')
     sed -i "s|${oldUrlEscaped}|${newUrlEscaped}|g" "$nginxPath"
     systemctl reload nginx
-    echo "${green}Proxy Pass обновлен.${reset}"
+    echo "${green}$(msg proxy_updated)${reset}"
 }
 
 modifyDomain() {
     getConfigInfo || return 1
-    echo "Текущий домен: $xray_userDomain"
-    read -rp "Введите новый домен: " new_domain
+    echo "$(msg current_domain): $xray_userDomain"
+    read -rp "$(msg enter_new_domain)" new_domain
     [ -z "$new_domain" ] && return
     sed -i "s/server_name ${xray_userDomain};/server_name ${new_domain};/" "$nginxPath"
     userDomain="$new_domain"
@@ -179,5 +179,5 @@ modifyDomain() {
 updateXrayCore() {
     bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
     systemctl restart xray xray-reality 2>/dev/null || true
-    echo "${green}Xray-core обновлён.${reset}"
+    echo "${green}$(msg xray_updated)${reset}"
 }

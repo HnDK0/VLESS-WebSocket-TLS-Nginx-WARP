@@ -4,7 +4,7 @@
 # =================================================================
 
 clearLogs() {
-    echo -e "${cyan}Очистка логов...${reset}"
+    echo -e "${cyan}$(msg logs_clearing)${reset}"
     for f in /var/log/xray/access.log /var/log/xray/error.log \
               /var/log/nginx/access.log /var/log/nginx/error.log \
               /var/log/psiphon/psiphon.log \
@@ -12,7 +12,7 @@ clearLogs() {
         [ -f "$f" ] && : > "$f"
     done
     journalctl --vacuum-size=100M &>/dev/null
-    echo "${green}Логи очищены.${reset}"
+    echo "${green}$(msg logs_cleared)${reset}"
 }
 
 setupLogrotate() {
@@ -31,7 +31,7 @@ setupLogrotate() {
     endscript
 }
 EOF
-    echo "${green}Авто-ротация логов настроена.${reset}"
+    echo "${green}$(msg logrotate_ok)${reset}"
 }
 
 # SSL автообновление
@@ -41,33 +41,33 @@ setupSslCron() {
 0 3 */35 * * root /root/.acme.sh/acme.sh --cron --home /root/.acme.sh --pre-hook "/usr/local/bin/vwn open-80" --post-hook "/usr/local/bin/vwn close-80" >> /var/log/acme_cron.log 2>&1
 EOF
     chmod 644 /etc/cron.d/acme-renew
-    echo "${green}Автообновление SSL включено.${reset}"
+    echo "${green}$(msg ssl_cron_enabled)${reset}"
 }
 
 removeSslCron() {
     rm -f /etc/cron.d/acme-renew
-    echo "${green}Автообновление SSL отключено.${reset}"
+    echo "${green}$(msg ssl_cron_disabled)${reset}"
 }
 
 checkSslCronStatus() {
-    [ -f /etc/cron.d/acme-renew ] && echo "${green}ВКЛЮЧЕНО${reset}" || echo "${red}ВЫКЛЮЧЕНО${reset}"
+    [ -f /etc/cron.d/acme-renew ] && echo "${green}$(msg enabled)${reset}" || echo "${red}$(msg disabled)${reset}"
 }
 
 manageSslCron() {
     while true; do
         clear
-        echo -e "${cyan}=== Управление автообновлением SSL ===${reset}"
-        echo -e "Статус: $(checkSslCronStatus)"
+        echo -e "${cyan}$(msg ssl_cron_title)${reset}"
+        echo -e "$(msg status): $(checkSslCronStatus)"
         echo ""
-        echo -e "${green}1.${reset} Включить"
-        echo -e "${green}2.${reset} Выключить"
-        echo -e "${green}3.${reset} Показать задачу"
-        echo -e "${green}0.${reset} Назад"
-        read -rp "Выберите: " choice
+        echo -e "${green}1.${reset} $(msg cron_enable)"
+        echo -e "${green}2.${reset} $(msg cron_disable)"
+        echo -e "${green}3.${reset} $(msg cron_show)"
+        echo -e "${green}0.${reset} $(msg back)"
+        read -rp "$(msg choose)" choice
         case $choice in
             1) setupSslCron; read -r ;;
             2) removeSslCron; read -r ;;
-            3) cat /etc/cron.d/acme-renew 2>/dev/null || echo "Нет задачи"; read -r ;;
+            3) cat /etc/cron.d/acme-renew 2>/dev/null || echo "$(msg cron_no_task)"; read -r ;;
             0) break ;;
         esac
     done
@@ -90,33 +90,33 @@ EOF
 0 4 * * 0 root /usr/local/bin/clear-logs.sh
 EOF
     chmod 644 /etc/cron.d/clear-logs
-    echo "${green}Автоочистка логов настроена (воскр. 04:00).${reset}"
+    echo "${green}$(msg log_cron_enabled)${reset}"
 }
 
 removeLogClearCron() {
     rm -f /etc/cron.d/clear-logs /usr/local/bin/clear-logs.sh
-    echo "${green}Автоочистка логов отключена.${reset}"
+    echo "${green}$(msg log_cron_disabled)${reset}"
 }
 
 checkLogClearCronStatus() {
-    [ -f /etc/cron.d/clear-logs ] && echo "${green}ВКЛЮЧЕНО${reset}" || echo "${red}ВЫКЛЮЧЕНО${reset}"
+    [ -f /etc/cron.d/clear-logs ] && echo "${green}$(msg enabled)${reset}" || echo "${red}$(msg disabled)${reset}"
 }
 
 manageLogClearCron() {
     while true; do
         clear
-        echo -e "${cyan}=== Управление автоочисткой логов ===${reset}"
-        echo -e "Статус: $(checkLogClearCronStatus)"
+        echo -e "${cyan}$(msg log_cron_title)${reset}"
+        echo -e "$(msg status): $(checkLogClearCronStatus)"
         echo ""
-        echo -e "${green}1.${reset} Включить"
-        echo -e "${green}2.${reset} Выключить"
-        echo -e "${green}3.${reset} Показать задачу"
-        echo -e "${green}0.${reset} Назад"
-        read -rp "Выберите: " choice
+        echo -e "${green}1.${reset} $(msg cron_enable)"
+        echo -e "${green}2.${reset} $(msg cron_disable)"
+        echo -e "${green}3.${reset} $(msg cron_show)"
+        echo -e "${green}0.${reset} $(msg back)"
+        read -rp "$(msg choose)" choice
         case $choice in
             1) setupLogClearCron; read -r ;;
             2) removeLogClearCron; read -r ;;
-            3) cat /etc/cron.d/clear-logs 2>/dev/null || echo "Нет задачи"; read -r ;;
+            3) cat /etc/cron.d/clear-logs 2>/dev/null || echo "$(msg cron_no_task)"; read -r ;;
             0) break ;;
         esac
     done

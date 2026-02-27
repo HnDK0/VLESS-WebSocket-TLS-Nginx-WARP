@@ -3,7 +3,7 @@
 # core.sh — Общие переменные, утилиты, статус-функции
 # =================================================================
 
-VWN_VERSION="3.0"
+VWN_VERSION="3.1"
 VWN_LIB="/usr/local/lib/vwn"
 
 # Цвета
@@ -26,15 +26,13 @@ psiphonConfigFile='/usr/local/etc/xray/psiphon.json'
 psiphonBin='/usr/local/bin/psiphon-tunnel-core'
 torDomainsFile='/usr/local/etc/xray/tor_domains.txt'
 
-
-
 # ============================================================
 # СИСТЕМА
 # ============================================================
 
 isRoot() {
     if [[ "$EUID" -ne 0 ]]; then
-        echo "${red}Запустите скрипт от root!${reset}"
+        echo "${red}$(msg run_as_root)${reset}"
         exit 1
     fi
 }
@@ -85,19 +83,18 @@ uninstallPackage() {
 }
 
 run_task() {
-    local msg="$1"; shift
-    echo -e "\n${yellow}>>> $msg${reset}"
+    local m="$1"; shift
+    echo -e "\n${yellow}>>> $m${reset}"
     if eval "$@"; then
-        echo -e "[${green} DONE ${reset}] $msg"
+        echo -e "[${green} DONE ${reset}] $m"
     else
-        echo -e "[${red} FAIL ${reset}] $msg"
+        echo -e "[${red} FAIL ${reset}] $m"
         return 1
     fi
 }
 
 setupAlias() {
     ln -sf "$VWN_LIB/../bin/vwn" /usr/local/bin/vwn 2>/dev/null || true
-    echo -e "${green}Команда 'vwn' доступна.${reset}"
 }
 
 generateRandomPath() {
@@ -132,6 +129,21 @@ getServiceStatus() {
     fi
 }
 
+# Определяем режим туннеля по конфигу Xray
+_getTunnelMode() {
+    local tag="$1"
+    local mode=""
+    if [ -f "$configPath" ]; then
+        mode=$(jq -r --arg t "$tag" \
+            '.routing.rules[] | select(.outboundTag==$t) |
+             if .port == "0-65535" then "Global"
+             elif (.domain | length) > 0 then "Split"
+             else "OFF" end' \
+            "$configPath" 2>/dev/null | head -1)
+    fi
+    echo "${mode:-OFF}"
+}
+
 getWarpStatusRaw() {
     if command -v warp-cli &>/dev/null; then
         warp-cli --accept-tos status 2>/dev/null | grep -q "Connected" && echo "ACTIVE" || echo "OFF"
@@ -149,17 +161,12 @@ getWarpStatus() {
     if [ "$raw" != "ACTIVE" ]; then
         echo "${red}OFF${reset}"; return
     fi
-    # Определяем режим по конфигу Xray
-    local mode="OFF"
-    if [ -f "$configPath" ]; then
-        local warp_rule
-        warp_rule=$(jq -r '.routing.rules[] | select(.outboundTag=="warp") | if .port == "0-65535" then "Global" elif (.domain | length) > 0 then "Split" else "OFF" end' "$configPath" 2>/dev/null | head -1)
-        [ -n "$warp_rule" ] && mode="$warp_rule"
-    fi
+    local mode
+    mode=$(_getTunnelMode "warp")
     case "$mode" in
-        Global) echo "${green}ACTIVE | Global${reset}" ;;
-        Split)  echo "${green}ACTIVE | Split${reset}" ;;
-        *)      echo "${yellow}ACTIVE | маршрут OFF${reset}" ;;
+        Global) echo "${green}ACTIVE | $(msg mode_global)${reset}" ;;
+        Split)  echo "${green}ACTIVE | $(msg mode_split)${reset}" ;;
+        *)      echo "${yellow}ACTIVE | $(msg mode_off)${reset}" ;;
     esac
 }
 

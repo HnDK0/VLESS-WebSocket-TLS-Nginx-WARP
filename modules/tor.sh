@@ -26,7 +26,7 @@ getTorStatus() {
         case "$mode" in
             Global) echo "${green}ON | Global${country_str}${reset}" ;;
             Split)  echo "${green}ON | Split${country_str}${reset}" ;;
-            *)      echo "${yellow}ON | маршрут OFF${country_str}${reset}" ;;
+            *)      echo "${yellow}ON | $(msg mode_off)${country_str}${reset}" ;;
         esac
     else
         echo "${red}OFF${reset}"
@@ -35,14 +35,14 @@ getTorStatus() {
 
 installTor() {
     if command -v tor &>/dev/null; then
-        echo "info: tor уже установлен."; return 0
+        echo "info: $(msg tor_already)"; return 0
     fi
-    echo -e "${cyan}Установка Tor...${reset}"
+    echo -e "${cyan}$(msg tor_installing)${reset}"
     [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
     ${PACKAGE_MANAGEMENT_INSTALL} tor || {
-        echo "${red}Ошибка установки Tor.${reset}"; return 1
+        echo "${red}$(msg tor_install_fail)${reset}"; return 1
     }
-    echo "${green}Tor установлен.${reset}"
+    echo "${green}$(msg tor_installed)${reset}"
 }
 
 writeTorConfig() {
@@ -63,7 +63,7 @@ StrictNodes 1
 EOF
     fi
 
-    echo "${green}Tor конфиг записан.${reset}"
+    echo "${green}$(msg tor_config_ok)${reset}"
 }
 
 setupTorService() {
@@ -72,9 +72,9 @@ setupTorService() {
     sleep 5
 
     if curl -s --connect-timeout 15 -x socks5://127.0.0.1:${TOR_PORT} https://api.ipify.org &>/dev/null; then
-        echo "${green}Tor запущен и работает.${reset}"
+        echo "${green}$(msg tor_running)${reset}"
     else
-        echo "${yellow}Tor запущен, но проверка не прошла. Требуется время для подключения (30-60 сек).${reset}"
+        echo "${yellow}$(msg tor_started)${reset}"
     fi
 }
 
@@ -112,7 +112,7 @@ applyTorDomains() {
     done
     systemctl restart xray 2>/dev/null || true
     systemctl restart xray-reality 2>/dev/null || true
-    echo "${green}Tor Split применён.${reset}"
+    echo "${green}$(msg tor_split_ok)${reset}"
 }
 
 toggleTorGlobal() {
@@ -124,7 +124,7 @@ toggleTorGlobal() {
     done
     systemctl restart xray 2>/dev/null || true
     systemctl restart xray-reality 2>/dev/null || true
-    echo "${green}Tor Global: весь трафик через Tor.${reset}"
+    echo "${green}$(msg tor_global_ok)${reset}"
 }
 
 removeTorFromConfigs() {
@@ -138,49 +138,49 @@ removeTorFromConfigs() {
 }
 
 checkTorIP() {
-    echo "Реальный IP сервера : $(getServerIP)"
-    echo "Проверка через Tor (может занять 30 сек)..."
+    echo "$(msg tor_real_ip) : $(getServerIP)"
+    echo "$(msg tor_checking)"
     local ip
-    ip=$(curl -s --connect-timeout 30 -x socks5://127.0.0.1:${TOR_PORT} https://api.ipify.org 2>/dev/null || echo "Недоступен")
-    echo "IP через Tor        : $ip"
-    if [ "$ip" != "Недоступен" ]; then
+    ip=$(curl -s --connect-timeout 30 -x socks5://127.0.0.1:${TOR_PORT} https://api.ipify.org 2>/dev/null || echo "$(msg unavailable)")
+    echo "$(msg tor_ip) : $ip"
+    if [ "$ip" != "$(msg unavailable)" ]; then
         local country
         country=$(curl -s --connect-timeout 10 -x socks5://127.0.0.1:${TOR_PORT} \
             "http://ip-api.com/line/${ip}?fields=countryCode" 2>/dev/null | tr -d '[:space:]')
-        echo "Страна выхода       : ${country:-неизвестно}"
+        echo "$(msg tor_exit_country) : ${country:-$(msg unknown)}"
     fi
 }
 
 renewTorCircuit() {
     if command -v tor-resolve &>/dev/null || systemctl is-active --quiet tor; then
-        echo -e "${cyan}Обновление цепи Tor...${reset}"
+        echo -e "${cyan}$(msg tor_circuit_title)${reset}"
         (echo -e "AUTHENTICATE \"\"\r\nSIGNAL NEWNYM\r\nQUIT" | \
             nc 127.0.0.1 ${TOR_CONTROL_PORT} 2>/dev/null) || true
-        echo "${green}Запрос на новую цепь отправлен.${reset}"
+        echo "${green}$(msg tor_circuit_sent)${reset}"
     else
-        echo "${red}Tor не запущен.${reset}"
+        echo "${red}$(msg tor_not_running)${reset}"
     fi
 }
 
 changeTorCountry() {
-    echo -e "${cyan}Выберите страну выхода Tor:${reset}"
-    echo " 1) DE — Германия"
-    echo " 2) NL — Нидерланды"
-    echo " 3) US — США"
-    echo " 4) GB — Великобритания"
-    echo " 5) FR — Франция"
-    echo " 6) SE — Швеция"
-    echo " 7) CH — Швейцария"
-    echo " 8) FI — Финляндия"
-    echo " 9) Авто (любая страна)"
-    echo "10) Ввести код вручную"
+    echo -e "${cyan}$(msg tor_country_select)${reset}"
+    echo " $(msg country_de)"
+    echo " $(msg country_nl)"
+    echo " $(msg country_us)"
+    echo " $(msg country_gb)"
+    echo " $(msg country_fr)"
+    echo " $(msg country_se)"
+    echo " $(msg country_ch)"
+    echo " $(msg country_fi)"
+    echo " $(msg tor_country_auto)"
+    echo "$(msg tor_country_manual)"
     read -rp "Выбор: " c
     local country
     case "$c" in
         1) country="DE" ;; 2) country="NL" ;; 3) country="US" ;;
         4) country="GB" ;; 5) country="FR" ;; 6) country="SE" ;;
         7) country="CH" ;; 8) country="FI" ;; 9) country="" ;;
-        10) read -rp "Код страны (2 буквы, например RO): " country ;;
+        10) read -rp "$(msg tor_country_prompt)" country ;;
         *) return ;;
     esac
 
@@ -192,11 +192,11 @@ changeTorCountry() {
     fi
     mv /tmp/torrc.tmp "$TOR_CONFIG"
     systemctl restart tor
-    echo "${green}Страна изменена на ${country:-Авто}. Перезапуск Tor...${reset}"
+    echo "${green}$(msg tor_country_changed) ${country:-$(msg auto)}. $(msg tor_country_restarting)${reset}"
 }
 
 removeTor() {
-    echo -e "${red}Удалить Tor? (y/n)${reset}"
+    echo -e "${red}$(msg tor_remove_confirm) $(msg yes_no)${reset}"
     read -r confirm
     if [[ "$confirm" == "y" ]]; then
         systemctl stop tor 2>/dev/null || true
@@ -205,26 +205,26 @@ removeTor() {
         rm -f "$torDomainsFile"
         [ -z "${PACKAGE_MANAGEMENT_REMOVE:-}" ] && identifyOS
         ${PACKAGE_MANAGEMENT_REMOVE} tor 2>/dev/null || true
-        echo "${green}Tor удалён.${reset}"
+        echo "${green}$(msg removed)${reset}"
     fi
 }
 
 installTorFull() {
-    echo -e "${cyan}=== Установка Tor ===${reset}"
+    echo -e "${cyan}$(msg tor_setup_title)${reset}"
     [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
     installTor || return 1
 
-    echo -e "${cyan}Выберите страну выхода:${reset}"
-    echo " 1) DE — Германия"
-    echo " 2) NL — Нидерланды"
-    echo " 3) US — США"
-    echo " 4) GB — Великобритания"
-    echo " 5) FR — Франция"
-    echo " 6) SE — Швеция"
-    echo " 7) CH — Швейцария"
-    echo " 8) FI — Финляндия"
-    echo " 9) Авто (любая страна)"
-    echo "10) Ввести код вручную"
+    echo -e "${cyan}$(msg tor_country_select)${reset}"
+    echo " $(msg country_de)"
+    echo " $(msg country_nl)"
+    echo " $(msg country_us)"
+    echo " $(msg country_gb)"
+    echo " $(msg country_fr)"
+    echo " $(msg country_se)"
+    echo " $(msg country_ch)"
+    echo " $(msg country_fi)"
+    echo " $(msg tor_country_auto)"
+    echo "$(msg tor_country_manual)"
     read -rp "Выбор [9]: " country_choice
 
     local country
@@ -240,9 +240,9 @@ installTorFull() {
     setupTorService
     applyTorDomains
 
-    echo -e "\n${green}Tor установлен!${reset}"
-    echo "Добавьте домены в список (пункт 3) для Split режима."
-    echo "${yellow}Tor медленнее обычного интернета — рекомендуется Split режим.${reset}"
+    echo -e "\n${green}$(msg tor_installed_ok)${reset}"
+    echo "$(msg tor_hint)"
+    echo "${yellow}$(msg tor_slow)${reset}"
 }
 
 
@@ -256,7 +256,7 @@ getTorBridgeStatus() {
         btype=$(grep "^ClientTransportPlugin" "$TOR_CONFIG" 2>/dev/null | awk '{print $1}' | head -1)
         local count
         count=$(grep -c "^Bridge " "$TOR_CONFIG" 2>/dev/null || echo 0)
-        echo "${green}ON (${count} мостов)${reset}"
+        echo "${green}ON (${count} $(msg bridges_count))${reset}"
     else
         echo "${red}OFF${reset}"
     fi
@@ -264,31 +264,31 @@ getTorBridgeStatus() {
 
 installObfs4() {
     if command -v obfs4proxy &>/dev/null; then
-        echo "info: obfs4proxy уже установлен."; return 0
+        echo "info: $(msg obfs4_already)"; return 0
     fi
-    echo -e "${cyan}Установка obfs4proxy...${reset}"
+    echo -e "${cyan}$(msg obfs4_installing)${reset}"
     [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
     ${PACKAGE_MANAGEMENT_INSTALL} obfs4proxy 2>/dev/null || {
-        echo "${yellow}obfs4proxy не найден в репо, пробуем lyrebird...${reset}"
+        echo "${yellow}$(msg tor_obfs4_try)${reset}"
         ${PACKAGE_MANAGEMENT_INSTALL} lyrebird 2>/dev/null || {
-            echo "${red}Не удалось установить obfs4proxy/lyrebird.${reset}"; return 1
+            echo "${red}$(msg tor_obfs4_fail)${reset}"; return 1
         }
     }
 }
 
 addTorBridges() {
-    echo -e "${cyan}=== Настройка мостов Tor ===${reset}"
+    echo -e "${cyan}$(msg tor_bridge_title)${reset}"
     echo ""
-    echo "Тип моста:"
-    echo "1) obfs4       — рекомендуется, маскирует трафик"
-    echo "2) snowflake   — через WebRTC, сложно заблокировать"
-    echo "3) meek-azure  — через CDN Azure"
-    echo "4) Ввести вручную (любой тип)"
-    echo "0) Назад"
+    echo "$(msg tor_bridge_type)"
+    echo "$(msg tor_bridge_1)"
+    echo "$(msg tor_bridge_2)"
+    echo "$(msg tor_bridge_3)"
+    echo "$(msg tor_bridge_4)"
+    echo "$(msg back)"
     echo ""
-    echo "${yellow}Получить мосты: https://bridges.torproject.org/${reset}"
+    echo "${yellow}$(msg tor_bridge_url)${reset}"
     echo ""
-    read -rp "Тип [1]: " bridge_type_choice
+    read -rp "$(msg tor_bridge_choice)" bridge_type_choice
     [ "${bridge_type_choice}" = "0" ] && return
 
     local transport=""
@@ -310,8 +310,8 @@ addTorBridges() {
     fi
 
     echo ""
-    echo "Вставьте строки мостов (по одной, пустая строка — конец):"
-    echo "Пример: obfs4 1.2.3.4:443 FINGERPRINT cert=... iat-mode=0"
+    echo "$(msg tor_bridge_paste)"
+    echo "$(msg tor_bridge_example)"
     echo ""
 
     local bridges=()
@@ -322,7 +322,7 @@ addTorBridges() {
     done
 
     if [ ${#bridges[@]} -eq 0 ]; then
-        echo "${red}Мосты не введены.${reset}"; return 1
+        echo "${red}$(msg tor_bridge_empty)${reset}"; return 1
     fi
 
     # Удаляем старые настройки мостов
@@ -349,78 +349,78 @@ addTorBridges() {
     done
 
     systemctl restart tor
-    echo "${green}Мосты настроены (${#bridges[@]} шт). Tor перезапущен.${reset}"
+    echo "${green}$(msg tor_bridge_ok)${reset}"
 }
 
 removeTorBridges() {
     grep -v "^UseBridges\|^ClientTransportPlugin\|^Bridge " "$TOR_CONFIG" > /tmp/torrc.tmp
     mv /tmp/torrc.tmp "$TOR_CONFIG"
     systemctl restart tor
-    echo "${green}Мосты удалены. Tor перезапущен.${reset}"
+    echo "${green}$(msg tor_bridge_removed)${reset}"
 }
 
 manageTor() {
     set +e
     while true; do
         clear
-        echo -e "${cyan}=== Управление Tor ===${reset}"
-        echo -e "Статус: $(getTorStatus)"
+        echo -e "${cyan}$(msg tor_title)${reset}"
+        echo -e "$(msg status): $(getTorStatus)"
         echo ""
         if command -v tor &>/dev/null; then
             local country="Авто"
             grep -q "^ExitNodes" "$TOR_CONFIG" 2>/dev/null && \
                 country=$(grep "^ExitNodes" "$TOR_CONFIG" | grep -oP '\{[A-Z]+\}' | tr -d '{}' | head -1)
-            echo -e "  Страна:  ${green}${country}${reset}"
-            echo -e "  Мосты:   $(getTorBridgeStatus)"
-            echo -e "  SOCKS5:  127.0.0.1:$TOR_PORT"
-            [ -f "$torDomainsFile" ] && echo -e "  Доменов: $(wc -l < "$torDomainsFile")"
+            echo -e "  $(msg country): ${green}${country}${reset}"
+            echo -e "  $(msg tor_bridges_status): $(getTorBridgeStatus)"
+            echo -e "  $(msg tor_socks5): 127.0.0.1:$TOR_PORT"
+            [ -f "$torDomainsFile" ] && echo -e "  $(msg domains_count): $(wc -l < "$torDomainsFile")"
         fi
         echo ""
-        echo -e "${green}1.${reset} Установить Tor"
-        echo -e "${green}2.${reset} Переключить режим (Global/Split/OFF)"
-        echo -e "${green}3.${reset} Добавить домен в список"
-        echo -e "${green}4.${reset} Удалить домен из списка"
-        echo -e "${green}5.${reset} Редактировать список доменов (Nano)"
-        echo -e "${green}6.${reset} Сменить страну выхода"
-        echo -e "${green}7.${reset} Проверить IP через Tor"
-        echo -e "${green}8.${reset} Обновить цепь (новый IP)"
-        echo -e "${green}9.${reset} Перезапустить"
-        echo -e "${green}10.${reset} Логи Tor"
-        echo -e "${green}11.${reset} Настройка мостов (Bridges)"
-        echo -e "${green}12.${reset} Удалить мосты"
-        echo -e "${green}13.${reset} Удалить Tor"
-        echo -e "${green}0.${reset} Назад"
+        echo -e "${green}1.${reset} $(msg tor_install)"
+        echo -e "${green}2.${reset} $(msg tor_mode)"
+        echo -e "${green}3.${reset} $(msg tor_add)"
+        echo -e "${green}4.${reset} $(msg tor_del)"
+        echo -e "${green}5.${reset} $(msg tor_edit)"
+        echo -e "${green}6.${reset} $(msg tor_country)"
+        echo -e "${green}7.${reset} $(msg tor_check)"
+        echo -e "${green}8.${reset} $(msg tor_renew)"
+        echo -e "${green}9.${reset} $(msg tor_restart)"
+        echo -e "${green}10.${reset} $(msg tor_logs)"
+        echo -e "${green}11.${reset} $(msg tor_bridges)"
+        echo -e "${green}12.${reset} $(msg tor_bridges_remove)"
+        echo -e "${green}13.${reset} $(msg tor_remove)"
+        echo -e "${green}0.${reset} $(msg back)"
         echo ""
-        read -rp "Выберите: " choice
+        read -rp "$(msg choose)" choice
         case $choice in
             1)  installTorFull ;;
             2)
-                ! command -v tor &>/dev/null && { echo "${red}Сначала установите Tor (п.1)${reset}"; read -r; continue; }
-                echo "1) Global — весь трафик через Tor"
-                echo "2) Split — только список доменов"
-                echo "3) OFF — отключить Tor от Xray"
-                echo "0) Назад"
+                ! command -v tor &>/dev/null && { echo "${red}$(msg tor_not_installed)${reset}"; read -r; continue; }
+                echo "$(msg tor_mode_1)"
+                echo "$(msg tor_mode_2)"
+                echo "$(msg tor_mode_3)"
+                echo "$(msg back)"
                 read -rp "Выбор: " mode
                 case "$mode" in
                     1) toggleTorGlobal ;;
                     2) applyTorDomains ;;
-                    3) removeTorFromConfigs; echo "${green}Tor отключён от Xray.${reset}" ;;
+                    3) removeTorFromConfigs; echo "${green}$(msg tor_off_ok)${reset}" ;;
                     0) continue ;;
                 esac
                 ;;
             3)
-                ! command -v tor &>/dev/null && { echo "${red}Сначала установите Tor (п.1)${reset}"; read -r; continue; }
-                read -rp "Домен (например rutracker.org): " domain
+                ! command -v tor &>/dev/null && { echo "${red}$(msg tor_not_installed)${reset}"; read -r; continue; }
+                read -rp "$(msg tor_domain_prompt)" domain
                 [ -z "$domain" ] && continue
                 echo "$domain" >> "$torDomainsFile"
                 sort -u "$torDomainsFile" -o "$torDomainsFile"
                 applyTorDomains
-                echo "${green}Домен $domain добавлен.${reset}"
+                echo "${green}$(msg tor_domain_added)${reset}"
                 ;;
             4)
-                [ ! -f "$torDomainsFile" ] && { echo "Список пуст"; read -r; continue; }
+                [ ! -f "$torDomainsFile" ] && { echo "$(msg warp_list_empty)"; read -r; continue; }
                 nl "$torDomainsFile"
-                read -rp "Номер для удаления: " num
+                read -rp "$(msg warp_domain_del)" num
                 [[ "$num" =~ ^[0-9]+$ ]] && sed -i "${num}d" "$torDomainsFile" && applyTorDomains
                 ;;
             5)
@@ -431,7 +431,7 @@ manageTor() {
             6)  changeTorCountry ;;
             7)  checkTorIP ;;
             8)  renewTorCircuit ;;
-            9)  systemctl restart tor && echo "${green}Перезапущен.${reset}" ;;
+            9)  systemctl restart tor && echo "${green}$(msg restarted)${reset}" ;;
             10) tail -n 50 /var/log/tor/notices.log 2>/dev/null || journalctl -u tor -n 50 --no-pager ;;
             11) addTorBridges ;;
             12) removeTorBridges ;;
@@ -439,7 +439,7 @@ manageTor() {
             0)  break ;;
         esac
         [ "${choice}" = "0" ] && continue
-        echo -e "\n${cyan}Нажмите Enter...${reset}"
+        echo -e "\n${cyan}$(msg press_enter)${reset}"
         read -r
     done
 }
