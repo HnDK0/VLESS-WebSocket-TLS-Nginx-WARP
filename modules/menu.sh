@@ -150,6 +150,8 @@ menu() {
         echo -e "\t${green}31.${reset} Управление VLESS + Reality"
         echo -e "\t${green}32.${reset} Управление Relay (внешний сервер)"
         echo -e "\t${green}33.${reset} Управление Psiphon"
+        echo -e "\t${green}34.${reset} Управление Tor"
+        echo -e "\t${green}35.${reset} Управление WARP-in-WARP"
         echo -e "\t—————————————— Выход ————————————————————"
         echo -e "\t${green}0.${reset}  Выйти"
         echo -e "${cyan}----------------------------------------------------------------${reset}"

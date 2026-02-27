@@ -7,10 +7,10 @@ VWN_VERSION="3.0"
 VWN_LIB="/usr/local/lib/vwn"
 
 # Цвета
-red=$(tput setaf 1 && tput bold)
-green=$(tput setaf 2 && tput bold)
-yellow=$(tput setaf 3 && tput bold)
-cyan=$(tput setaf 6 && tput bold)
+red=$(tput setaf 1)$(tput bold)
+green=$(tput setaf 2)$(tput bold)
+yellow=$(tput setaf 3)$(tput bold)
+cyan=$(tput setaf 6)$(tput bold)
 reset=$(tput sgr0)
 
 # Пути конфигов
