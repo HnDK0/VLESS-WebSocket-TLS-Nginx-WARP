@@ -122,15 +122,7 @@ getServerIP() {
 # ============================================================
 
 getServiceStatus() {
-    local svc="$1"
-    if [ "$svc" = "xray" ]; then
-        # Показываем RUNNING если хотя бы один из xray-сервисов активен
-        if systemctl is-active --quiet xray 2>/dev/null || systemctl is-active --quiet xray-reality 2>/dev/null; then
-            echo "${green}RUNNING${reset}"
-        else
-            echo "${red}STOPPED${reset}"
-        fi
-    elif systemctl is-active --quiet "$svc" 2>/dev/null; then
+    if systemctl is-active --quiet "$1" 2>/dev/null; then
         echo "${green}RUNNING${reset}"
     else
         echo "${red}STOPPED${reset}"

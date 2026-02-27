@@ -119,28 +119,27 @@ menu() {
     # Первичная очистка экрана
     clear
     while true; do
-        local s_nginx s_xray s_warp s_ssl s_bbr s_f2b s_jail s_cdn s_reality s_relay s_psiphon
+        local s_nginx s_ws s_reality s_warp s_ssl s_bbr s_f2b s_jail s_cdn s_relay s_psiphon s_tor
         clear
         s_nginx=$(getServiceStatus nginx)
-        s_xray=$(getServiceStatus xray)
+        s_ws=$(getServiceStatus xray)
+        s_reality=$(getServiceStatus xray-reality)
         s_warp=$(getWarpStatus)
         s_ssl=$(checkCertExpiry)
         s_bbr=$(getBbrStatus)
         s_f2b=$(getF2BStatus)
         s_jail=$(getWebJailStatus)
         s_cdn=$(getCdnStatus)
-        s_reality=$(getRealityStatus)
         s_relay=$(getRelayStatus)
         s_psiphon=$(getPsiphonStatus)
         s_tor=$(getTorStatus)
 
         echo -e "${cyan}================================================================${reset}"
-        echo -e "   ${red}XRAY VLESS + WARP + CDN + REALITY${reset} | $(date +'%d.%m.%Y %H:%M')"
+        echo -e "   ${red}VWN — VLESS + WARP + CDN + REALITY${reset} | $(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}================================================================${reset}"
-        echo -e "  NGINX: $s_nginx  |  XRAY: $s_xray  |  WARP: $s_warp"
-        echo -e "  $s_ssl  |  BBR: $s_bbr  |  F2B: $s_f2b"
-        echo -e "  WebJail: $s_jail  |  CDN: $s_cdn  |  Reality: $s_reality"
-        echo -e "  Relay: $s_relay  |  Psiphon: $s_psiphon  |  Tor: $s_tor"
+        echo -e "  Nginx: $s_nginx  |  Vless WS: $s_ws  |  Vless Reality: $s_reality  |  WARP: $s_warp"
+        echo -e "  $s_ssl  |  BBR: $s_bbr  |  F2B: $s_f2b  |  WebJail: $s_jail"
+        echo -e "  CDN: $s_cdn  |  Relay: $s_relay  |  Psiphon: $s_psiphon  |  Tor: $s_tor"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
 
         echo -e "\t${green}1.${reset}  $(msg menu_install)"
