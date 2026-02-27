@@ -134,7 +134,7 @@ checkTorIP() {
     if [ "$ip" != "Недоступен" ]; then
         local country
         country=$(curl -s --connect-timeout 10 -x socks5://127.0.0.1:${TOR_PORT} \
-            "https://ipinfo.io/${ip}/country" 2>/dev/null | tr -d '[:space:]')
+            "http://ip-api.com/line/${ip}?fields=countryCode" 2>/dev/null | tr -d '[:space:]')
         echo "Страна выхода       : ${country:-неизвестно}"
     fi
 }
@@ -233,6 +233,118 @@ installTorFull() {
     echo "${yellow}Tor медленнее обычного интернета — рекомендуется Split режим.${reset}"
 }
 
+
+# ------------------------------------------------------------------
+# Мосты (Bridges)
+# ------------------------------------------------------------------
+
+getTorBridgeStatus() {
+    if grep -q "^UseBridges 1" "$TOR_CONFIG" 2>/dev/null; then
+        local btype
+        btype=$(grep "^ClientTransportPlugin" "$TOR_CONFIG" 2>/dev/null | awk '{print $1}' | head -1)
+        local count
+        count=$(grep -c "^Bridge " "$TOR_CONFIG" 2>/dev/null || echo 0)
+        echo "${green}ON (${count} мостов)${reset}"
+    else
+        echo "${red}OFF${reset}"
+    fi
+}
+
+installObfs4() {
+    if command -v obfs4proxy &>/dev/null; then
+        echo "info: obfs4proxy уже установлен."; return 0
+    fi
+    echo -e "${cyan}Установка obfs4proxy...${reset}"
+    [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
+    ${PACKAGE_MANAGEMENT_INSTALL} obfs4proxy 2>/dev/null || {
+        echo "${yellow}obfs4proxy не найден в репо, пробуем lyrebird...${reset}"
+        ${PACKAGE_MANAGEMENT_INSTALL} lyrebird 2>/dev/null || {
+            echo "${red}Не удалось установить obfs4proxy/lyrebird.${reset}"; return 1
+        }
+    }
+}
+
+addTorBridges() {
+    echo -e "${cyan}=== Настройка мостов Tor ===${reset}"
+    echo ""
+    echo "Тип моста:"
+    echo "1) obfs4       — рекомендуется, маскирует трафик"
+    echo "2) snowflake   — через WebRTC, сложно заблокировать"
+    echo "3) meek-azure  — через CDN Azure"
+    echo "4) Ввести вручную (любой тип)"
+    echo ""
+    echo "${yellow}Получить мосты: https://bridges.torproject.org/${reset}"
+    echo ""
+    read -rp "Тип [1]: " bridge_type_choice
+
+    local transport=""
+    case "${bridge_type_choice:-1}" in
+        1) transport="obfs4" ;;
+        2) transport="snowflake" ;;
+        3) transport="meek_lite" ;;
+        4) transport="" ;;
+    esac
+
+    # Устанавливаем obfs4proxy если нужен
+    if [ "$transport" = "obfs4" ] || [ "$transport" = "meek_lite" ]; then
+        installObfs4 || return 1
+    fi
+
+    if [ "$transport" = "snowflake" ]; then
+        [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
+        ${PACKAGE_MANAGEMENT_INSTALL} snowflake-client 2>/dev/null ||         ${PACKAGE_MANAGEMENT_INSTALL} tor-geoipdb 2>/dev/null || true
+    fi
+
+    echo ""
+    echo "Вставьте строки мостов (по одной, пустая строка — конец):"
+    echo "Пример: obfs4 1.2.3.4:443 FINGERPRINT cert=... iat-mode=0"
+    echo ""
+
+    local bridges=()
+    while true; do
+        read -rp "> " bridge_line
+        [ -z "$bridge_line" ] && break
+        bridges+=("$bridge_line")
+    done
+
+    if [ ${#bridges[@]} -eq 0 ]; then
+        echo "${red}Мосты не введены.${reset}"; return 1
+    fi
+
+    # Удаляем старые настройки мостов
+    grep -v "^UseBridges\|^ClientTransportPlugin\|^Bridge " "$TOR_CONFIG" > /tmp/torrc.tmp
+    mv /tmp/torrc.tmp "$TOR_CONFIG"
+
+    # Добавляем новые
+    echo "UseBridges 1" >> "$TOR_CONFIG"
+
+    if [ "$transport" = "obfs4" ] || [ "$transport" = "meek_lite" ]; then
+        local obfs4_bin
+        obfs4_bin=$(command -v obfs4proxy || command -v lyrebird || echo "obfs4proxy")
+        echo "ClientTransportPlugin obfs4,meek_lite exec ${obfs4_bin}" >> "$TOR_CONFIG"
+    fi
+
+    if [ "$transport" = "snowflake" ]; then
+        local sf_bin
+        sf_bin=$(command -v snowflake-client || echo "snowflake-client")
+        echo "ClientTransportPlugin snowflake exec ${sf_bin} -log /var/log/tor/snowflake.log" >> "$TOR_CONFIG"
+    fi
+
+    for bridge in "${bridges[@]}"; do
+        echo "Bridge ${bridge}" >> "$TOR_CONFIG"
+    done
+
+    systemctl restart tor
+    echo "${green}Мосты настроены (${#bridges[@]} шт). Tor перезапущен.${reset}"
+}
+
+removeTorBridges() {
+    grep -v "^UseBridges\|^ClientTransportPlugin\|^Bridge " "$TOR_CONFIG" > /tmp/torrc.tmp
+    mv /tmp/torrc.tmp "$TOR_CONFIG"
+    systemctl restart tor
+    echo "${green}Мосты удалены. Tor перезапущен.${reset}"
+}
+
 manageTor() {
     set +e
     while true; do
@@ -244,8 +356,9 @@ manageTor() {
             local country="Авто"
             grep -q "^ExitNodes" "$TOR_CONFIG" 2>/dev/null && \
                 country=$(grep "^ExitNodes" "$TOR_CONFIG" | grep -oP '\{[A-Z]+\}' | tr -d '{}' | head -1)
-            echo -e "  Страна: ${green}${country}${reset}"
-            echo -e "  SOCKS5: 127.0.0.1:$TOR_PORT"
+            echo -e "  Страна:  ${green}${country}${reset}"
+            echo -e "  Мосты:   $(getTorBridgeStatus)"
+            echo -e "  SOCKS5:  127.0.0.1:$TOR_PORT"
             [ -f "$torDomainsFile" ] && echo -e "  Доменов: $(wc -l < "$torDomainsFile")"
         fi
         echo ""
@@ -259,7 +372,9 @@ manageTor() {
         echo -e "${green}8.${reset} Обновить цепь (новый IP)"
         echo -e "${green}9.${reset} Перезапустить"
         echo -e "${green}10.${reset} Логи Tor"
-        echo -e "${green}11.${reset} Удалить Tor"
+        echo -e "${green}11.${reset} Настройка мостов (Bridges)"
+        echo -e "${green}12.${reset} Удалить мосты"
+        echo -e "${green}13.${reset} Удалить Tor"
         echo -e "${green}0.${reset} Назад"
         echo ""
         read -rp "Выберите: " choice
@@ -300,7 +415,9 @@ manageTor() {
             8)  renewTorCircuit ;;
             9)  systemctl restart tor && echo "${green}Перезапущен.${reset}" ;;
             10) tail -n 50 /var/log/tor/notices.log 2>/dev/null || journalctl -u tor -n 50 --no-pager ;;
-            11) removeTor ;;
+            11) addTorBridges ;;
+            12) removeTorBridges ;;
+            13) removeTor ;;
             0)  break ;;
         esac
         echo -e "\n${cyan}Нажмите Enter...${reset}"

@@ -59,7 +59,7 @@ fullRemove() {
     echo -e "${red}Удалить Xray, Nginx, WARP, Psiphon и все конфиги? (y/n)${reset}"
     read -r confirm
     if [[ "$confirm" == "y" ]]; then
-        systemctl stop nginx xray xray-reality warp-svc psiphon tor xray-warp2 wg-quick@warp2 2>/dev/null || true
+        systemctl stop nginx xray xray-reality warp-svc psiphon tor 2>/dev/null || true
         warp-cli disconnect 2>/dev/null || true
         [ -z "${PACKAGE_MANAGEMENT_REMOVE:-}" ] && identifyOS
         uninstallPackage 'nginx*' || true
@@ -68,10 +68,7 @@ fullRemove() {
         systemctl disable xray-reality psiphon 2>/dev/null || true
         rm -f /etc/systemd/system/xray-reality.service
         rm -f /etc/systemd/system/psiphon.service
-        rm -f "$torDomainsFile" "$warp2DomainsFile"
-        rm -f /etc/wireguard/warp2.conf
-        rm -f /usr/local/etc/xray/warp2-proxy.json
-        rm -f /etc/systemd/system/xray-warp2.service
+        rm -f "$torDomainsFile"
         rm -f "$psiphonBin"
         rm -rf /etc/nginx /usr/local/etc/xray /root/.cloudflare_api \
                /var/lib/psiphon /var/log/psiphon \
@@ -85,8 +82,9 @@ fullRemove() {
 
 menu() {
     set +e
+    # Первичная очистка экрана
+    clear
     while true; do
-        clear
         local s_nginx s_xray s_warp s_ssl s_bbr s_f2b s_jail s_cdn s_reality s_relay s_psiphon
         s_nginx=$(getServiceStatus nginx)
         s_xray=$(getServiceStatus xray)
@@ -100,7 +98,8 @@ menu() {
         s_relay=$(getRelayStatus)
         s_psiphon=$(getPsiphonStatus)
         s_tor=$(getTorStatus)
-        s_warp2=$(getWarp2Status)
+        # Перемещаем курсор в начало без очистки — нет мигания
+        tput cup 0 0
 
         echo -e "${cyan}================================================================${reset}"
         echo -e "   ${red}XRAY VLESS + WARP + CDN + REALITY${reset} | $(date +'%d.%m.%Y %H:%M')"
@@ -108,7 +107,7 @@ menu() {
         echo -e "  NGINX: $s_nginx  |  XRAY: $s_xray  |  WARP: ${green}${s_warp}${reset}"
         echo -e "  $s_ssl  |  BBR: $s_bbr  |  F2B: $s_f2b"
         echo -e "  WebJail: $s_jail  |  CDN: $s_cdn  |  Reality: $s_reality"
-        echo -e "  Relay: $s_relay  |  Psiphon: $s_psiphon  |  Tor: $s_tor  |  WARP2: $s_warp2"
+        echo -e "  Relay: $s_relay  |  Psiphon: $s_psiphon  |  Tor: $s_tor"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
 
         echo -e "\t${green}1.${reset}  Установить Xray (VLESS+WS+TLS+WARP+CDN)"
@@ -152,7 +151,6 @@ menu() {
         echo -e "\t${green}32.${reset} Управление Relay (внешний сервер)"
         echo -e "\t${green}33.${reset} Управление Psiphon"
         echo -e "\t${green}34.${reset} Управление Tor"
-        echo -e "\t${green}35.${reset} Управление WARP-in-WARP"
         echo -e "\t—————————————— Выход ————————————————————"
         echo -e "\t${green}0.${reset}  Выйти"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
@@ -182,7 +180,7 @@ menu() {
             21) tail -n 80 /var/log/nginx/access.log 2>/dev/null || echo "Нет логов" ;;
             22) tail -n 80 /var/log/nginx/error.log 2>/dev/null || echo "Нет логов" ;;
             23) clearLogs ;;
-            24) systemctl restart xray xray-reality nginx warp-svc psiphon tor xray-warp2 2>/dev/null || true
+            24) systemctl restart xray xray-reality nginx warp-svc psiphon tor 2>/dev/null || true
                 echo "${green}Все сервисы перезапущены.${reset}" ;;
             25) updateXrayCore ;;
             26) fullRemove ;;
@@ -194,7 +192,6 @@ menu() {
             32) manageRelay ;;
             33) managePsiphon ;;
             34) manageTor ;;
-            35) manageWarp2 ;;
             0)  exit 0 ;;
             *)  echo -e "${red}Неверный пункт!${reset}"; sleep 1 ;;
         esac

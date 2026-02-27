@@ -5,7 +5,7 @@
 ## Быстрая установка
 
 ```bash
-curl -L https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh | bash
+curl -L https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh -o vwn && bash vwn
 ```
 
 После установки скрипт доступен как команда:
@@ -55,7 +55,6 @@ vwn update
 outbound (по routing rules):
     ├── free    — прямой выход (default)
     ├── warp    — Cloudflare WARP (SOCKS5:40000)
-    ├── warp2   — WARP-in-WARP (SOCKS5:40001)
     ├── psiphon — Psiphon tunnel (SOCKS5:40002)
     ├── tor     — Tor (SOCKS5:40003)
     ├── relay   — внешний сервер (vless/vmess/trojan/socks)
@@ -70,7 +69,6 @@ outbound (по routing rules):
 | 443   | VLESS+WS+TLS через Nginx          |
 | 8443  | VLESS+Reality (по умолчанию)      |
 | 40000 | WARP SOCKS5 (warp-cli, локальный) |
-| 40001 | WARP2 SOCKS5 (xray-warp2, локальный) |
 | 40002 | Psiphon SOCKS5 (локальный)        |
 | 40003 | Tor SOCKS5 (локальный)            |
 | 40004 | Tor Control Port (локальный)      |
@@ -84,7 +82,7 @@ outbound (по routing rules):
   NGINX: RUNNING  |  XRAY: RUNNING  |  WARP: ACTIVE
   SSL: OK (89 d)  |  BBR: ON  |  F2B: OFF
   WebJail: NO  |  CDN: OFF  |  Reality: ON (порт 8443)
-  Relay: OFF  |  Psiphon: ON (DE) via WARP  |  Tor: ON (US)  |  WARP2: ON
+  Relay: OFF  |  Psiphon: ON (DE)  |  Tor: ON (US)
 ----------------------------------------------------------------
     1.  Установить Xray (VLESS+WS+TLS+WARP+CDN)
     2.  Показать QR-код и ссылку
@@ -127,7 +125,6 @@ outbound (по routing rules):
     32. Управление Relay (внешний сервер)
     33. Управление Psiphon
     34. Управление Tor
-    35. Управление WARP-in-WARP
     —————————————— Выход ————————————————————
     0.  Выйти
 ----------------------------------------------------------------
@@ -161,8 +158,6 @@ vless://...  vmess://...  trojan://...  socks5://...
 
 **Режимы запуска:**
 - **Прямое подключение** — стандартный режим
-- **Через WARP** — трафик Psiphon заворачивается через WARP1 (proxychains4), помогает если Psiphon блокируется провайдером сервера
-
 Переключение режима без переустановки — пункт 10 в подменю.
 
 ### Tor (пункт 34)
@@ -174,16 +169,6 @@ vless://...  vmess://...  trojan://...  socks5://...
 - Проверка IP с определением страны выхода
 
 **Рекомендация:** использовать Split режим — Tor медленнее обычного интернета.
-
-### WARP-in-WARP (пункт 35)
-
-Второй независимый WARP туннель через WireGuard (`wgcf`). Трафик к Cloudflare WG endpoint идёт через первый WARP.
-
-**Цепочка:** `Xray → SOCKS5:40001 → xray-warp2 (fwmark) → warp2 WireGuard → Cloudflare`
-
-**Требование:** первый WARP должен быть активен.
-
-**Примечание:** страну выхода выбрать нельзя — Cloudflare назначает сам.
 
 ## WARP (пункты 10–14)
 
@@ -216,7 +201,6 @@ openai.com, chatgpt.com, oaistatic.com, oaiusercontent.com, auth0.openai.com
 ├── xray.sh                  # Xray WS+TLS конфиг
 ├── nginx.sh                 # Nginx, CDN, SSL
 ├── warp.sh                  # WARP управление
-├── warp2.sh                 # WARP-in-WARP (WireGuard)
 ├── reality.sh               # VLESS+Reality
 ├── relay.sh                 # Внешний outbound
 ├── psiphon.sh               # Psiphon туннель
@@ -230,22 +214,17 @@ openai.com, chatgpt.com, oaistatic.com, oaiusercontent.com, auth0.openai.com
 ├── reality.json             # Конфиг VLESS+Reality
 ├── reality_client.txt       # Параметры клиента Reality
 ├── warp_domains.txt         # Домены для WARP split
-├── warp2_domains.txt        # Домены для WARP2 split
 ├── psiphon.json             # Конфиг Psiphon
 ├── psiphon_domains.txt      # Домены для Psiphon split
 ├── tor_domains.txt          # Домены для Tor split
 ├── relay.conf               # Конфиг Relay
 ├── relay_domains.txt        # Домены для Relay split
-└── warp2-proxy.json         # Конфиг xray-warp2
 
 /etc/systemd/system/
 ├── xray.service             # VLESS+WS
 ├── xray-reality.service     # Reality
-├── xray-warp2.service       # WARP2 proxy
 └── psiphon.service          # Psiphon
 
-/etc/wireguard/
-└── warp2.conf               # WireGuard конфиг WARP2
 
 /etc/cron.d/
 ├── acme-renew               # Автообновление SSL
@@ -270,12 +249,6 @@ warp-cli --accept-tos connect
 # Переключить на режим "через WARP" — пункт 33 → 10
 # Или проверить логи:
 tail -50 /var/log/psiphon/psiphon.log
-```
-
-### WARP2 не поднимается
-```bash
-systemctl status wg-quick@warp2
-journalctl -u wg-quick@warp2 -n 30
 ```
 
 ### Reality не запускается
@@ -310,7 +283,7 @@ vwn  # Пункт 26
 - [wgcf](https://github.com/ViRb3/wgcf) (для WARP2)
 - [Psiphon tunnel core](https://github.com/Psiphon-Labs/psiphon-tunnel-core-binaries)
 - [acme.sh](https://github.com/acmesh-official/acme.sh)
-- nginx, jq, ufw, tor, wireguard-tools, proxychains4, qrencode
+- nginx, jq, ufw, tor, wireguard-tools, qrencode
 
 ## Лицензия
 

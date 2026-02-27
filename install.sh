@@ -18,7 +18,7 @@ green=$(tput setaf 2 && tput bold 2>/dev/null || echo "")
 cyan=$(tput setaf 6 && tput bold 2>/dev/null || echo "")
 reset=$(tput sgr0 2>/dev/null || echo "")
 
-MODULES="core xray nginx warp warp2 reality relay psiphon tor security logs menu"
+MODULES="core xray nginx warp reality relay psiphon tor security logs menu"
 UPDATE_ONLY=false
 
 # Парсим аргументы
@@ -94,7 +94,7 @@ case "${1:-}" in
         bash <(curl -fsSL https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh) --update
         exit 0 ;;
 esac
-for module in core xray nginx warp warp2 reality relay psiphon tor security logs menu; do
+for module in core xray nginx warp reality relay psiphon tor security logs menu; do
     [ -f "$VWN_LIB/${module}.sh" ] && source "$VWN_LIB/${module}.sh" || { echo "ERROR: $module не найден"; exit 1; }
 done
 isRoot

@@ -25,15 +25,6 @@ psiphonDomainsFile='/usr/local/etc/xray/psiphon_domains.txt'
 psiphonConfigFile='/usr/local/etc/xray/psiphon.json'
 psiphonBin='/usr/local/bin/psiphon-tunnel-core'
 torDomainsFile='/usr/local/etc/xray/tor_domains.txt'
-warp2DomainsFile='/usr/local/etc/xray/warp2_domains.txt'
-
-getWarp2Status() {
-    if systemctl is-active --quiet "wg-quick@warp2" 2>/dev/null &&        systemctl is-active --quiet xray-warp2 2>/dev/null; then
-        echo "${green}ON${reset}"
-    else
-        echo "${red}OFF${reset}"
-    fi
-}
 
 getTorStatus() {
     if systemctl is-active --quiet tor 2>/dev/null; then

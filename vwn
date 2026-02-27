@@ -26,7 +26,7 @@ case "${1:-}" in
 esac
 
 # Загружаем модули
-for module in core xray nginx warp warp2 reality relay psiphon tor security logs menu; do
+for module in core xray nginx warp reality relay psiphon tor security logs menu; do
     if [ -f "$VWN_LIB/${module}.sh" ]; then
         # shellcheck source=/dev/null
         source "$VWN_LIB/${module}.sh"
