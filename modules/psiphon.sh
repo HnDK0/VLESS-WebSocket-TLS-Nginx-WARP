@@ -3,10 +3,13 @@
 # psiphon.sh — Psiphon: установка, домены, управление
 # Использует psiphon-tunnel-core ConsoleClient
 # SOCKS5 на 127.0.0.1:40002
+# Режим via-warp: трафик Psiphon идёт через WARP1 (fwmark 51820)
 # =================================================================
 
 PSIPHON_PORT=40002
 PSIPHON_SERVICE="/etc/systemd/system/psiphon.service"
+PSIPHON_FWMARK=51820
+PSIPHON_TABLE=51820
 
 # Публичные PropagationChannelId/SponsorId из открытых клиентов Psiphon
 PSIPHON_PROPAGATION_CHANNEL="24BCA4EE20BEB92C"
@@ -14,9 +17,10 @@ PSIPHON_SPONSOR_ID="721AE60D76700F5A"
 
 getPsiphonStatus() {
     if systemctl is-active --quiet psiphon 2>/dev/null; then
-        local country=""
+        local country="" via=""
         [ -f "$psiphonConfigFile" ] && country=$(jq -r '.EgressRegion // ""' "$psiphonConfigFile" 2>/dev/null)
-        echo "${green}ON${country:+ ($country)}${reset}"
+        grep -q "AmbientCapabilities" "$PSIPHON_SERVICE" 2>/dev/null && via=" via WARP"
+        echo "${green}ON${country:+ ($country)}${via}${reset}"
     else
         echo "${red}OFF${reset}"
     fi
@@ -66,21 +70,26 @@ writePsiphonConfig() {
     "LimitTunnelProtocols": []
 }
 EOF
-    # Создаём директорию с правами для пользователя nobody
+    # Создаём пользователя и директорию
+    id psiphon &>/dev/null || useradd -r -s /sbin/nologin -d /var/lib/psiphon psiphon
     mkdir -p /var/lib/psiphon
-    chown nobody:nogroup /var/lib/psiphon
+    chown -R psiphon:psiphon /var/lib/psiphon
+    chown -R psiphon:psiphon /var/log/psiphon
     chmod 755 /var/lib/psiphon
 }
 
+# ------------------------------------------------------------------
+# Сервис БЕЗ WARP — прямое подключение
+# ------------------------------------------------------------------
 setupPsiphonService() {
     cat > "$PSIPHON_SERVICE" << EOF
 [Unit]
 Description=Psiphon Tunnel Core
-After=network.target
+After=network.target warp-svc.service
 
 [Service]
 Type=simple
-User=nobody
+User=psiphon
 ExecStart=$psiphonBin -config $psiphonConfigFile
 Restart=on-failure
 RestartSec=5
@@ -95,7 +104,6 @@ EOF
     systemctl restart psiphon
     sleep 5
 
-    # Проверяем что SOCKS5 поднялся
     if curl -s --connect-timeout 10 -x socks5://127.0.0.1:${PSIPHON_PORT} https://api.ipify.org &>/dev/null; then
         echo "${green}Psiphon запущен и работает.${reset}"
     else
@@ -103,8 +111,100 @@ EOF
     fi
 }
 
+# ------------------------------------------------------------------
+# Сервис ЧЕРЕЗ WARP1 — весь трафик Psiphon идёт через WARP (fwmark)
+# Принцип: SO_MARK на сокеты psiphon → отдельная routing table →
+#           default route через warp-cli SOCKS не работает для WG,
+#           поэтому используем tproxy-подход через ip rule + nftables:
+#           помечаем трафик psiphon fwmark → маршрутизируем через
+#           сетевой namespace где единственный маршрут — через WARP
+# Упрощённый подход: запускаем psiphon обёрнутый в redsocks/proxychains
+# ------------------------------------------------------------------
+setupPsiphonViaWarpService() {
+    # Проверяем proxychains4
+    if ! command -v proxychains4 &>/dev/null; then
+        echo -e "${cyan}Установка proxychains4...${reset}"
+        [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
+        ${PACKAGE_MANAGEMENT_INSTALL} proxychains4 2>/dev/null || \
+        ${PACKAGE_MANAGEMENT_INSTALL} proxychains-ng 2>/dev/null || {
+            echo "${red}Не удалось установить proxychains4.${reset}"; return 1
+        }
+    fi
+
+    # Конфиг proxychains — через WARP1 SOCKS5
+    cat > /etc/proxychains4-psiphon.conf << 'EOF'
+strict_chain
+proxy_dns
+remote_dns_subnet 224
+tcp_read_time_out 15000
+tcp_connect_time_out 8000
+[ProxyList]
+socks5 127.0.0.1 40000
+EOF
+
+    cat > "$PSIPHON_SERVICE" << EOF
+[Unit]
+Description=Psiphon Tunnel Core (via WARP)
+After=network.target warp-svc.service
+Requires=warp-svc.service
+
+[Service]
+Type=simple
+User=psiphon
+Environment="PROXYCHAINS_CONF_FILE=/etc/proxychains4-psiphon.conf"
+ExecStart=/usr/bin/proxychains4 -f /etc/proxychains4-psiphon.conf $psiphonBin -config $psiphonConfigFile
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/psiphon/psiphon.log
+StandardError=append:/var/log/psiphon/psiphon.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable psiphon
+    systemctl restart psiphon
+
+    echo -e "${cyan}Ожидание подключения Psiphon через WARP (до 60 сек)...${reset}"
+    local i=0
+    while [ $i -lt 12 ]; do
+        sleep 5
+        if curl -s --connect-timeout 8 -x socks5://127.0.0.1:${PSIPHON_PORT} https://api.ipify.org &>/dev/null; then
+            echo "${green}Psiphon через WARP работает!${reset}"
+            return 0
+        fi
+        i=$((i + 1))
+        echo -n "."
+    done
+    echo ""
+    echo "${yellow}Psiphon запущен, но проверка не прошла. Проверьте логи (пункт 9).${reset}"
+}
+
+toggleViaWarp() {
+    [ ! -f "$psiphonConfigFile" ] && { echo "${red}Psiphon не установлен.${reset}"; return 1; }
+
+    if grep -q "proxychains4" "$PSIPHON_SERVICE" 2>/dev/null; then
+        # Текущий режим — via WARP, переключаем на прямой
+        echo -e "${cyan}Переключение на прямое подключение...${reset}"
+        setupPsiphonService
+        echo "${green}Режим: прямое подключение.${reset}"
+    else
+        # Текущий режим — прямой, переключаем на via WARP
+        echo -e "${cyan}Переключение на подключение через WARP...${reset}"
+
+        # Проверяем что WARP работает
+        if ! curl -s --connect-timeout 5 -x socks5://127.0.0.1:40000 https://api.ipify.org &>/dev/null; then
+            echo "${red}WARP недоступен на порту 40000. Сначала убедитесь что WARP активен.${reset}"
+            return 1
+        fi
+
+        setupPsiphonViaWarpService
+        echo "${green}Режим: через WARP.${reset}"
+    fi
+}
+
 applyPsiphonOutbound() {
-    # Добавляет psiphon outbound (SOCKS5 на 40002) в оба конфига Xray
     local psiphon_ob='{"tag":"psiphon","protocol":"socks","settings":{"servers":[{"address":"127.0.0.1","port":40002}]}}'
 
     for cfg in "$configPath" "$realityConfigPath"; do
@@ -118,7 +218,6 @@ applyPsiphonOutbound() {
         local has_rule
         has_rule=$(jq '.routing.rules[] | select(.outboundTag=="psiphon")' "$cfg" 2>/dev/null)
         if [ -z "$has_rule" ]; then
-            # Вставляем правило после block, перед warp
             jq '.routing.rules = [.routing.rules[0]] + [{"type":"field","domain":[],"outboundTag":"psiphon"}] + .routing.rules[1:]' \
                 "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
         fi
@@ -166,11 +265,18 @@ removePsiphonFromConfigs() {
 }
 
 checkPsiphonIP() {
+    local via=""
+    grep -q "proxychains4" "$PSIPHON_SERVICE" 2>/dev/null && via=" (через WARP)"
     echo "Реальный IP сервера : $(getServerIP)"
-    echo "Проверка через Psiphon..."
+    echo "Проверка через Psiphon${via}..."
     local ip
     ip=$(curl -s --connect-timeout 15 -x socks5://127.0.0.1:${PSIPHON_PORT} https://api.ipify.org 2>/dev/null || echo "Недоступен")
     echo "IP через Psiphon    : $ip"
+    if [ "$ip" != "Недоступен" ]; then
+        local country
+        country=$(curl -s --connect-timeout 8 "https://ipinfo.io/${ip}/country" 2>/dev/null | tr -d '[:space:]')
+        echo "Страна выхода       : ${country:-неизвестно}"
+    fi
 }
 
 removePsiphon() {
@@ -180,6 +286,7 @@ removePsiphon() {
         systemctl stop psiphon 2>/dev/null || true
         systemctl disable psiphon 2>/dev/null || true
         rm -f "$PSIPHON_SERVICE" "$psiphonBin" "$psiphonConfigFile" "$psiphonDomainsFile"
+        rm -f /etc/proxychains4-psiphon.conf
         rm -rf /var/lib/psiphon /var/log/psiphon
         systemctl daemon-reload
         removePsiphonFromConfigs
@@ -189,6 +296,21 @@ removePsiphon() {
 
 installPsiphon() {
     echo -e "${cyan}=== Установка Psiphon ===${reset}"
+    echo ""
+    echo "Режим подключения:"
+    echo "1) Прямое подключение"
+    echo "2) Через WARP (рекомендуется если прямое не работает)"
+    read -rp "Выбор [1]: " mode_choice
+
+    local via_warp=false
+    if [ "${mode_choice:-1}" = "2" ]; then
+        if ! curl -s --connect-timeout 5 -x socks5://127.0.0.1:40000 https://api.ipify.org &>/dev/null; then
+            echo "${red}WARP недоступен на порту 40000. Используем прямое подключение.${reset}"
+        else
+            via_warp=true
+            echo "${green}Будет использован WARP.${reset}"
+        fi
+    fi
 
     installPsiphonBinary || return 1
 
@@ -203,10 +325,10 @@ installPsiphon() {
     echo " 8) SE — Швеция"
     echo " 9) Авто (любая страна)"
     echo "10) Ввести код вручную"
-    read -rp "Выбор [1]: " country_choice
+    read -rp "Выбор [9]: " country_choice
 
     local country
-    case "${country_choice:-1}" in
+    case "${country_choice:-9}" in
         1) country="DE" ;;
         2) country="NL" ;;
         3) country="US" ;;
@@ -217,13 +339,17 @@ installPsiphon() {
         8) country="SE" ;;
         9) country="" ;;
         10) read -rp "Код страны (AT AU BE BG CA CH CZ DE DK EE ES FI FR GB HR HU IE IN IT JP LV NL NO PL PT RO RS SE SG SK US): " country ;;
-        *) country="DE" ;;
+        *) country="" ;;
     esac
 
     writePsiphonConfig "$country"
-    setupPsiphonService
 
-    # Добавляем в Xray конфиги с пустым списком доменов (Split режим)
+    if $via_warp; then
+        setupPsiphonViaWarpService || return 1
+    else
+        setupPsiphonService
+    fi
+
     applyPsiphonDomains
 
     echo -e "\n${green}Psiphon установлен!${reset}"
@@ -260,24 +386,29 @@ managePsiphon() {
         echo -e "Статус: $(getPsiphonStatus)"
         echo ""
         if [ -f "$psiphonConfigFile" ]; then
-            local country
+            local country via_mode
             country=$(jq -r '.EgressRegion // "Авто"' "$psiphonConfigFile" 2>/dev/null)
-            echo -e "  Страна: ${green}${country:-Авто}${reset}"
-            echo -e "  SOCKS5: 127.0.0.1:$PSIPHON_PORT"
-            [ -f "$psiphonDomainsFile" ] && echo -e "  Доменов: $(wc -l < "$psiphonDomainsFile")"
+            grep -q "proxychains4" "$PSIPHON_SERVICE" 2>/dev/null \
+                && via_mode="${green}через WARP${reset}" \
+                || via_mode="${yellow}прямое${reset}"
+            echo -e "  Страна:     ${green}${country:-Авто}${reset}"
+            echo -e "  Подключение: $via_mode"
+            echo -e "  SOCKS5:     127.0.0.1:$PSIPHON_PORT"
+            [ -f "$psiphonDomainsFile" ] && echo -e "  Доменов:    $(wc -l < "$psiphonDomainsFile")"
         fi
         echo ""
-        echo -e "${green}1.${reset} Установить Psiphon"
-        echo -e "${green}2.${reset} Переключить режим (Global/Split)"
-        echo -e "${green}3.${reset} Добавить домен в список"
-        echo -e "${green}4.${reset} Удалить домен из списка"
-        echo -e "${green}5.${reset} Редактировать список доменов (Nano)"
-        echo -e "${green}6.${reset} Сменить страну выхода"
-        echo -e "${green}7.${reset} Проверить IP через Psiphon"
-        echo -e "${green}8.${reset} Перезапустить"
-        echo -e "${green}9.${reset} Логи Psiphon"
-        echo -e "${green}10.${reset} Удалить Psiphon"
-        echo -e "${green}0.${reset} Назад"
+        echo -e "${green}1.${reset}  Установить Psiphon"
+        echo -e "${green}2.${reset}  Переключить режим (Global/Split)"
+        echo -e "${green}3.${reset}  Добавить домен в список"
+        echo -e "${green}4.${reset}  Удалить домен из списка"
+        echo -e "${green}5.${reset}  Редактировать список доменов (Nano)"
+        echo -e "${green}6.${reset}  Сменить страну выхода"
+        echo -e "${green}7.${reset}  Проверить IP через Psiphon"
+        echo -e "${green}8.${reset}  Перезапустить"
+        echo -e "${green}9.${reset}  Логи Psiphon"
+        echo -e "${green}10.${reset} Переключить: прямое / через WARP"
+        echo -e "${green}11.${reset} Удалить Psiphon"
+        echo -e "${green}0.${reset}  Назад"
         echo ""
         read -rp "Выберите: " choice
         case $choice in
@@ -316,7 +447,8 @@ managePsiphon() {
             7)  checkPsiphonIP ;;
             8)  systemctl restart psiphon && echo "${green}Перезапущен.${reset}" ;;
             9)  tail -n 50 /var/log/psiphon/psiphon.log 2>/dev/null || journalctl -u psiphon -n 50 --no-pager ;;
-            10) removePsiphon ;;
+            10) toggleViaWarp ;;
+            11) removePsiphon ;;
             0)  break ;;
         esac
         echo -e "\n${cyan}Нажмите Enter...${reset}"

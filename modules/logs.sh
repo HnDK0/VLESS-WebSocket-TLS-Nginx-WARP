@@ -7,7 +7,8 @@ clearLogs() {
     echo -e "${cyan}Очистка логов...${reset}"
     for f in /var/log/xray/access.log /var/log/xray/error.log \
               /var/log/nginx/access.log /var/log/nginx/error.log \
-              /var/log/psiphon/psiphon.log; do
+              /var/log/psiphon/psiphon.log \
+              /var/log/tor/notices.log; do
         [ -f "$f" ] && : > "$f"
     done
     journalctl --vacuum-size=100M &>/dev/null
