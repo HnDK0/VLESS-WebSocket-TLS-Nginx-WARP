@@ -3,16 +3,37 @@
 # logs.sh — Логи, logrotate, cron автоочистка и SSL обновление
 # =================================================================
 
+# Полный список лог-файлов всех компонентов
+_LOG_FILES=(
+    /var/log/xray/access.log
+    /var/log/xray/error.log
+    /var/log/xray/reality-error.log
+    /var/log/nginx/access.log
+    /var/log/nginx/error.log
+    /var/log/psiphon/psiphon.log
+    /var/log/tor/notices.log
+    /var/log/acme_cron.log
+)
+
 clearLogs() {
     echo -e "${cyan}$(msg logs_clearing)${reset}"
-    for f in /var/log/xray/access.log /var/log/xray/error.log \
-              /var/log/nginx/access.log /var/log/nginx/error.log \
-              /var/log/psiphon/psiphon.log \
-              /var/log/tor/notices.log; do
-        [ -f "$f" ] && : > "$f"
+    local total_before=0 total_after=0 f size
+    for f in "${_LOG_FILES[@]}"; do
+        [ -f "$f" ] || continue
+        size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+        total_before=$((total_before + size))
+        : > "$f"
     done
-    journalctl --vacuum-size=100M &>/dev/null
-    echo "${green}$(msg logs_cleared)${reset}"
+    journalctl --vacuum-size=50M &>/dev/null
+    journalctl --vacuum-time=7d &>/dev/null
+    total_after=0
+    for f in "${_LOG_FILES[@]}"; do
+        [ -f "$f" ] || continue
+        size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+        total_after=$((total_after + size))
+    done
+    local freed=$(( (total_before - total_after) / 1024 ))
+    echo "${green}$(msg logs_cleared) ($(msg logs_freed): ${freed} KB)${reset}"
 }
 
 setupLogrotate() {
@@ -28,7 +49,32 @@ setupLogrotate() {
     sharedscripts
     postrotate
         systemctl kill -s USR1 xray 2>/dev/null || true
+        systemctl kill -s USR1 xray-reality 2>/dev/null || true
     endscript
+}
+
+/var/log/nginx/*.log {
+    daily
+    rotate 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    sharedscripts
+    postrotate
+        systemctl reload nginx 2>/dev/null || true
+    endscript
+}
+
+/var/log/psiphon/*.log
+/var/log/tor/*.log {
+    weekly
+    rotate 4
+    missingok
+    notifempty
+    compress
+    delaycompress
 }
 EOF
     echo "${green}$(msg logrotate_ok)${reset}"
@@ -77,11 +123,19 @@ manageSslCron() {
 setupLogClearCron() {
     cat > /usr/local/bin/clear-logs.sh << 'EOF'
 #!/bin/bash
-for f in /var/log/xray/access.log /var/log/xray/error.log \
-          /var/log/nginx/access.log /var/log/nginx/error.log; do
+for f in \
+    /var/log/xray/access.log \
+    /var/log/xray/error.log \
+    /var/log/xray/reality-error.log \
+    /var/log/nginx/access.log \
+    /var/log/nginx/error.log \
+    /var/log/psiphon/psiphon.log \
+    /var/log/tor/notices.log \
+    /var/log/acme_cron.log; do
     [ -f "$f" ] && : > "$f"
 done
-journalctl --vacuum-size=100M &>/dev/null
+journalctl --vacuum-size=50M &>/dev/null
+journalctl --vacuum-time=7d &>/dev/null
 EOF
     chmod +x /usr/local/bin/clear-logs.sh
 

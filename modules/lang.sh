@@ -233,6 +233,7 @@ _initLang() {
     # ── LOGS ──────────────────────────────────────────────────────
     MSG[logs_clearing]=$(     [ "$VWN_LANG" = en ] && echo "Clearing logs..."          || echo "Очистка логов...")
     MSG[logs_cleared]=$(      [ "$VWN_LANG" = en ] && echo "Logs cleared."             || echo "Логи очищены.")
+    MSG[logs_freed]=$(        [ "$VWN_LANG" = en ] && echo "freed"                     || echo "освобождено")
     MSG[logrotate_ok]=$(      [ "$VWN_LANG" = en ] && echo "Log rotation configured."  || echo "Авто-ротация логов настроена.")
     MSG[ssl_cron_enabled]=$(  [ "$VWN_LANG" = en ] && echo "SSL auto-renewal enabled." || echo "Автообновление SSL включено.")
     MSG[ssl_cron_disabled]=$( [ "$VWN_LANG" = en ] && echo "SSL auto-renewal disabled." || echo "Автообновление SSL отключено.")
@@ -268,6 +269,8 @@ _initLang() {
     MSG[reality_config_ok]=$( [ "$VWN_LANG" = en ] && echo "Reality config created."   || echo "Reality конфиг создан.")
     MSG[reality_service_ok]=$( [ "$VWN_LANG" = en ] && echo "xray-reality service started." || echo "xray-reality сервис запущен.")
     MSG[reality_installed]=$( [ "$VWN_LANG" = en ] && echo "Reality installed!"        || echo "Reality установлен!")
+    MSG[reality_ip_private]=$( [ "$VWN_LANG" = en ] && echo "Warning: detected private IP" || echo "Внимание: определён приватный IP")
+    MSG[reality_ip_prompt]=$(  [ "$VWN_LANG" = en ] && echo "Enter your server public IP: " || echo "Введите публичный IP сервера: ")
     MSG[reality_hint_domains]=$( [ "$VWN_LANG" = en ] && echo "Add domains to list (item 3) for Split mode." || echo "Добавьте домены в список (пункт 3) для Split режима.")
     MSG[reality_not_installed]=$( [ "$VWN_LANG" = en ] && echo "Reality not installed." || echo "Reality не установлен.")
     MSG[reality_port_changed]=$( [ "$VWN_LANG" = en ] && echo "Reality port changed to" || echo "Порт Reality изменён на")

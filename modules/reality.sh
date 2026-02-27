@@ -35,7 +35,7 @@ writeRealityConfig() {
 {
     "log": {
         "access": "none",
-        "error": "/var/log/xray/error.log",
+        "error": "/var/log/xray/reality-error.log",
         "loglevel": "error"
     },
     "inbounds": [{
@@ -122,10 +122,27 @@ setupRealityService() {
     # Создаём пользователя xray если не существует
     id xray &>/dev/null || useradd -r -s /sbin/nologin -d /usr/local/etc/xray xray
 
-    # Создаём директорию логов и выставляем права
+    # Создаём директорию логов и передаём под пользователя xray
     mkdir -p /var/log/xray
-    chown xray:xray /var/log/xray
-    chmod 755 /var/log/xray
+    chown -R xray:xray /var/log/xray
+    chmod 750 /var/log/xray
+
+    # Создаём файл лога заранее с нужным владельцем
+    touch /var/log/xray/reality-error.log
+    chown xray:xray /var/log/xray/reality-error.log
+
+    # Переводим основной xray-сервис тоже на пользователя xray
+    # чтобы оба сервиса работали под одним пользователем
+    local xray_svc
+    for f in /etc/systemd/system/xray.service /usr/lib/systemd/system/xray.service /lib/systemd/system/xray.service; do
+        [ -f "$f" ] && xray_svc="$f" && break
+    done
+    if [ -n "$xray_svc" ]; then
+        sed -i 's/User=nobody/User=xray/' "$xray_svc"
+        sed -i 's/Group=nogroup/Group=xray/' "$xray_svc"
+        systemctl daemon-reload
+        systemctl restart xray 2>/dev/null || true
+    fi
     cat > /etc/systemd/system/xray-reality.service << 'EOF'
 [Unit]
 Description=Xray Reality Service
@@ -216,25 +233,34 @@ installReality() {
     showRealityQR
 }
 
+
+# Возвращает публичный IP — если автоопределение дало приватный/неизвестный адрес,
+# спрашивает у пользователя
+_getPublicIP() {
+    local ip
+    ip=$(getServerIP)
+    if [[ "$ip" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.) ]] || [ "$ip" = "UNKNOWN" ]; then
+        echo -e "${yellow}$(msg reality_ip_private): $ip${reset}" >&2
+        read -rp "$(msg reality_ip_prompt)" manual_ip
+        [ -n "$manual_ip" ] && ip="$manual_ip"
+    fi
+    echo "$ip"
+}
+
 showRealityInfo() {
     [ ! -f "$realityConfigPath" ] && { echo "${red}$(msg reality_not_installed)${reset}"; return 1; }
 
-    local uuid port shortId destHost privKey pubKey serverIP
+    local uuid port shortId destHost pubKey serverIP
     uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$realityConfigPath")
     port=$(jq -r '.inbounds[0].port' "$realityConfigPath")
     shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath")
     destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath")
-    privKey=$(jq -r '.inbounds[0].streamSettings.realitySettings.privateKey' "$realityConfigPath")
-
-    local tmpkeys
-    tmpkeys=$(/usr/local/bin/xray x25519 2>/dev/null) || true
     pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
-
-    serverIP=$(getServerIP)
+    serverIP=$(_getPublicIP)
 
     echo "--------------------------------------------------"
     echo "UUID:        $uuid"
-    echo "IP: $serverIP"
+    echo "IP:          $serverIP"
     echo "$(msg reality_port): $port"
     echo "PublicKey:   $pubKey"
     echo "ShortId:     $shortId"
@@ -255,7 +281,7 @@ showRealityQR() {
     shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath")
     destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath")
     pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
-    serverIP=$(getServerIP)
+    serverIP=$(_getPublicIP)
 
     local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#Reality-${serverIP}"
     command -v qrencode &>/dev/null || installPackage "qrencode"
@@ -355,7 +381,9 @@ manageReality() {
             5) modifyRealityPort ;;
             6) modifyRealityDest ;;
             7) systemctl restart xray-reality && echo "${green}$(msg restarted)${reset}" ;;
-            8) journalctl -u xray-reality -n 50 --no-pager ;;
+            8) journalctl -u xray-reality -n 50 --no-pager
+               echo "---"
+               tail -n 30 /var/log/xray/reality-error.log 2>/dev/null || true ;;
             9) removeReality ;;
             0) break ;;
         esac
