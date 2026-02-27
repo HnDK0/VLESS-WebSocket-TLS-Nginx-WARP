@@ -119,13 +119,15 @@ EOF
 }
 
 setupRealityService() {
+    # Создаём пользователя xray если не существует
+    id xray &>/dev/null || useradd -r -s /sbin/nologin -d /usr/local/etc/xray xray
     cat > /etc/systemd/system/xray-reality.service << 'EOF'
 [Unit]
 Description=Xray Reality Service
 After=network.target nss-lookup.target
 
 [Service]
-User=nobody
+User=xray
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
@@ -146,6 +148,7 @@ EOF
 
 installReality() {
     echo -e "${cyan}=== Установка VLESS + Reality ===${reset}"
+    [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
 
     read -rp "Порт Reality [8443]: " realityPort
     [ -z "$realityPort" ] && realityPort=8443

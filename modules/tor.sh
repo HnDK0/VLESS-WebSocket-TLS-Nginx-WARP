@@ -199,6 +199,7 @@ removeTor() {
 
 installTorFull() {
     echo -e "${cyan}=== Установка Tor ===${reset}"
+    [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
     installTor || return 1
 
     echo -e "${cyan}Выберите страну выхода:${reset}"

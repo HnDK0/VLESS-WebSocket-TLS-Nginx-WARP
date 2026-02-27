@@ -31,6 +31,7 @@ installPsiphonBinary() {
         echo "info: psiphon уже установлен."; return 0
     fi
 
+    [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
     echo -e "${cyan}Скачивание Psiphon tunnel core...${reset}"
     local arch
     arch=$(uname -m)
@@ -51,6 +52,7 @@ installPsiphonBinary() {
 
 writePsiphonConfig() {
     local country="${1:-}"
+    [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
     mkdir -p /usr/local/etc/xray
     mkdir -p /var/log/psiphon
 

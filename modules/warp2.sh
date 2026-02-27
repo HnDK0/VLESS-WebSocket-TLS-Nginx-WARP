@@ -105,13 +105,17 @@ generateWarp2Config() {
 
     # Пишем конфиг — endpoint трафик будет идти через таблицу маршрутизации warp2
     # Используем FwMark чтобы избежать рекурсии с первым WARP
+    local cf_ip="${CF_WG_ENDPOINT%:*}"
+    local gw
+    gw=$(ip route | grep default | awk '{print $3}' | head -1)
+
     cat > "$WARP2_WG_CONF" << EOF
 [Interface]
 PrivateKey = ${private_key}
 Address = ${address}
 DNS = 1.1.1.1
-PostUp = ip rule add fwmark 51821 table 51821; ip route add default dev warp2 table 51821; ip route add ${CF_WG_ENDPOINT%:*}/32 via \$(ip route | grep default | awk '{print \$3}' | head -1) table main
-PostDown = ip rule del fwmark 51821 table 51821 2>/dev/null; ip route del default dev warp2 table 51821 2>/dev/null; ip route del ${CF_WG_ENDPOINT%:*}/32 table main 2>/dev/null
+PostUp = ip rule add fwmark 51821 table 51821; ip route add default dev warp2 table 51821; ip route add ${cf_ip}/32 via ${gw} metric 10
+PostDown = ip rule del fwmark 51821 table 51821 2>/dev/null; ip route del default dev warp2 table 51821 2>/dev/null; ip route del ${cf_ip}/32 2>/dev/null
 Table = off
 
 [Peer]
@@ -160,10 +164,10 @@ Requires=${WARP2_SERVICE}.service
 
 [Service]
 Type=simple
-User=nobody
+User=root
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
-NoNewPrivileges=true
+NoNewPrivileges=false
 ExecStart=/usr/local/bin/xray run -config ${WARP2_XRAY_CONF}
 Restart=on-failure
 RestartSec=5
@@ -296,6 +300,9 @@ installWarp2() {
     echo -e "${cyan}=== Установка WARP-in-WARP ===${reset}"
     echo -e "${yellow}Требуется: первый WARP должен быть активен (порт 40000).${reset}"
     echo ""
+
+    # Инициализируем пакетный менеджер
+    [ -z "${PACKAGE_MANAGEMENT_INSTALL:-}" ] && identifyOS
 
     # Проверяем первый WARP
     if ! curl -s --connect-timeout 5 -x socks5://127.0.0.1:40000 https://api.ipify.org &>/dev/null; then

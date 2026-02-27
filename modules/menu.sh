@@ -24,6 +24,7 @@ prepareSoftware() {
 install() {
     isRoot
     clear
+    identifyOS
     echo "${green}>>> Установка Xray VLESS + WARP + CDN + Reality <<<${reset}"
     prepareSoftware
 

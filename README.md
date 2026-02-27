@@ -5,7 +5,7 @@
 ## Быстрая установка
 
 ```bash
-curl -L https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh -o vwn && bash vwn
+curl -L https://raw.githubusercontent.com/HnDK0/VLESS-WebSocket-TLS-Nginx-WARP/main/install.sh | bash
 ```
 
 После установки скрипт доступен как команда:
