@@ -121,6 +121,11 @@ EOF
 setupRealityService() {
     # Создаём пользователя xray если не существует
     id xray &>/dev/null || useradd -r -s /sbin/nologin -d /usr/local/etc/xray xray
+
+    # Создаём директорию логов и выставляем права
+    mkdir -p /var/log/xray
+    chown xray:xray /var/log/xray
+    chmod 755 /var/log/xray
     cat > /etc/systemd/system/xray-reality.service << 'EOF'
 [Unit]
 Description=Xray Reality Service
