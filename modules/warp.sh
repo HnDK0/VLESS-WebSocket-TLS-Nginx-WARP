@@ -64,8 +64,10 @@ applyWarpDomains() {
 
 toggleWarpMode() {
     echo "Выберите режим работы WARP:"
-    echo "1) Весь трафик через WARP (Global)"
-    echo "2) Только выбранные домены (Split)"
+    echo "1) Global — весь трафик через WARP"
+    echo "2) Split — только список доменов"
+    echo "3) OFF — отключить WARP от Xray"
+    echo "0) Назад"
     read -rp "Ваш выбор: " warp_mode
 
     case "$warp_mode" in
@@ -83,6 +85,17 @@ toggleWarpMode() {
             applyWarpDomains
             echo "${green}Split: Только список доменов через WARP.${reset}"
             ;;
+        3)
+            for cfg in "$configPath" "$realityConfigPath"; do
+                [ -f "$cfg" ] || continue
+                jq 'del(.routing.rules[] | select(.outboundTag == "warp"))' \
+                    "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+            done
+            echo "${green}WARP отключён от Xray.${reset}"
+            systemctl restart xray 2>/dev/null || true
+            systemctl restart xray-reality 2>/dev/null || true
+            ;;
+        0) return ;;
         *) echo "${red}Отмена.${reset}" ;;
     esac
 }

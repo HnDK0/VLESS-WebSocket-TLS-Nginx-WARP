@@ -272,10 +272,12 @@ addTorBridges() {
     echo "2) snowflake   — через WebRTC, сложно заблокировать"
     echo "3) meek-azure  — через CDN Azure"
     echo "4) Ввести вручную (любой тип)"
+    echo "0) Назад"
     echo ""
     echo "${yellow}Получить мосты: https://bridges.torproject.org/${reset}"
     echo ""
     read -rp "Тип [1]: " bridge_type_choice
+    [ "${bridge_type_choice}" = "0" ] && return
 
     local transport=""
     case "${bridge_type_choice:-1}" in
@@ -384,10 +386,13 @@ manageTor() {
                 ! command -v tor &>/dev/null && { echo "${red}Сначала установите Tor (п.1)${reset}"; read -r; continue; }
                 echo "1) Global — весь трафик через Tor"
                 echo "2) Split — только список доменов"
+                echo "3) OFF — отключить Tor от Xray"
+                echo "0) Назад"
                 read -rp "Выбор: " mode
                 case "$mode" in
                     1) toggleTorGlobal ;;
                     2) applyTorDomains ;;
+                    3) removeTorFromConfigs; echo "${green}Tor отключён от Xray.${reset}" ;;
                 esac
                 ;;
             3)

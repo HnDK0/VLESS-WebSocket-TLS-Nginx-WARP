@@ -238,10 +238,13 @@ manageRelay() {
                 [ ! -f "$relayConfigFile" ] && { echo "${red}Сначала настройте реле (п.1)${reset}"; read -r; continue; }
                 echo "1) Global — весь трафик через реле"
                 echo "2) Split — только список доменов"
+                echo "3) OFF — отключить реле от Xray"
+                echo "0) Назад"
                 read -rp "Выбор: " mode
                 case "$mode" in
                     1) toggleRelayGlobal ;;
                     2) applyRelayDomains ;;
+                    3) removeRelayFromConfigs; echo "${green}Реле отключено от Xray.${reset}" ;;
                 esac
                 ;;
             3)

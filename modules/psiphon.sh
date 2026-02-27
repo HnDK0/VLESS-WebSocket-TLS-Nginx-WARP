@@ -294,10 +294,13 @@ managePsiphon() {
                 [ ! -f "$psiphonConfigFile" ] && { echo "${red}Сначала установите Psiphon (п.1)${reset}"; read -r; continue; }
                 echo "1) Global — весь трафик через Psiphon"
                 echo "2) Split — только список доменов"
+                echo "3) OFF — отключить Psiphon от Xray"
+                echo "0) Назад"
                 read -rp "Выбор: " mode
                 case "$mode" in
                     1) togglePsiphonGlobal ;;
                     2) applyPsiphonDomains ;;
+                    3) removePsiphonFromConfigs; echo "${green}Psiphon отключён от Xray.${reset}" ;;
                 esac
                 ;;
             3)
