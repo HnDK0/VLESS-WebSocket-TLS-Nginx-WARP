@@ -15,7 +15,19 @@ getTorStatus() {
         if grep -q "^ExitNodes" "$TOR_CONFIG" 2>/dev/null; then
             country=$(grep "^ExitNodes" "$TOR_CONFIG" | grep -oP '\{[A-Z]+\}' | tr -d '{}' | head -1)
         fi
-        echo "${green}ON${country:+ ($country)}${reset}"
+        # Определяем режим по конфигу Xray
+        local mode="маршрут OFF"
+        if [ -f "$configPath" ]; then
+            local tor_rule
+            tor_rule=$(jq -r '.routing.rules[] | select(.outboundTag=="tor") | if .port == "0-65535" then "Global" elif (.domain | length) > 0 then "Split" else "OFF" end' "$configPath" 2>/dev/null | head -1)
+            [ -n "$tor_rule" ] && mode="$tor_rule"
+        fi
+        local country_str="${country:+, $country}"
+        case "$mode" in
+            Global) echo "${green}ON | Global${country_str}${reset}" ;;
+            Split)  echo "${green}ON | Split${country_str}${reset}" ;;
+            *)      echo "${yellow}ON | маршрут OFF${country_str}${reset}" ;;
+        esac
     else
         echo "${red}OFF${reset}"
     fi
@@ -425,6 +437,7 @@ manageTor() {
             13) removeTor ;;
             0)  break ;;
         esac
+        [ "${choice}" = "0" ] && continue
         echo -e "\n${cyan}Нажмите Enter...${reset}"
         read -r
     done

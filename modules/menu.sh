@@ -88,7 +88,7 @@ menu() {
         local s_nginx s_xray s_warp s_ssl s_bbr s_f2b s_jail s_cdn s_reality s_relay s_psiphon
         s_nginx=$(getServiceStatus nginx)
         s_xray=$(getServiceStatus xray)
-        s_warp=$(getWarpStatusRaw)
+        s_warp=$(getWarpStatus)
         s_ssl=$(checkCertExpiry)
         s_bbr=$(getBbrStatus)
         s_f2b=$(getF2BStatus)
@@ -104,7 +104,7 @@ menu() {
         echo -e "${cyan}================================================================${reset}"
         echo -e "   ${red}XRAY VLESS + WARP + CDN + REALITY${reset} | $(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}================================================================${reset}"
-        echo -e "  NGINX: $s_nginx  |  XRAY: $s_xray  |  WARP: ${green}${s_warp}${reset}"
+        echo -e "  NGINX: $s_nginx  |  XRAY: $s_xray  |  WARP: $s_warp"
         echo -e "  $s_ssl  |  BBR: $s_bbr  |  F2B: $s_f2b"
         echo -e "  WebJail: $s_jail  |  CDN: $s_cdn  |  Reality: $s_reality"
         echo -e "  Relay: $s_relay  |  Psiphon: $s_psiphon  |  Tor: $s_tor"
@@ -194,6 +194,10 @@ menu() {
             34) manageTor ;;
             0)  exit 0 ;;
             *)  echo -e "${red}Неверный пункт!${reset}"; sleep 1 ;;
+        esac
+        # Для подменю после возврата — сразу перерисовываем без Enter
+        case $num in
+            31|32|33|34) tput clear; continue ;;
         esac
         echo -e "\n${cyan}Нажмите Enter...${reset}"
         read -r

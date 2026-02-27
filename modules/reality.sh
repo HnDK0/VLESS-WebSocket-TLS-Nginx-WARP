@@ -329,6 +329,7 @@ manageReality() {
             9) removeReality ;;
             0) break ;;
         esac
+        [ "${choice}" = "0" ] && continue
         echo -e "\n${cyan}Нажмите Enter...${reset}"
         read -r
     done

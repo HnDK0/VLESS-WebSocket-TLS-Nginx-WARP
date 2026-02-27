@@ -95,7 +95,7 @@ toggleWarpMode() {
             systemctl restart xray 2>/dev/null || true
             systemctl restart xray-reality 2>/dev/null || true
             ;;
-        0) return ;;
+        0) return 0 ;;
         *) echo "${red}Отмена.${reset}" ;;
     esac
 }

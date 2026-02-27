@@ -26,15 +26,7 @@ psiphonConfigFile='/usr/local/etc/xray/psiphon.json'
 psiphonBin='/usr/local/bin/psiphon-tunnel-core'
 torDomainsFile='/usr/local/etc/xray/tor_domains.txt'
 
-getTorStatus() {
-    if systemctl is-active --quiet tor 2>/dev/null; then
-        local country="Авто"
-        [ -f /etc/tor/torrc ] && grep -q "^ExitNodes" /etc/tor/torrc 2>/dev/null &&             country=$(grep "^ExitNodes" /etc/tor/torrc | grep -oP '\{[A-Z]+\}' | tr -d '{}' | head -1)
-        echo "${green}ON ($country)${reset}"
-    else
-        echo "${red}OFF${reset}"
-    fi
-}
+
 
 # ============================================================
 # СИСТЕМА
@@ -146,6 +138,29 @@ getWarpStatusRaw() {
     else
         echo "NOT_INSTALLED"
     fi
+}
+
+getWarpStatus() {
+    local raw
+    raw=$(getWarpStatusRaw)
+    if [ "$raw" = "NOT_INSTALLED" ]; then
+        echo "${red}NOT INSTALLED${reset}"; return
+    fi
+    if [ "$raw" != "ACTIVE" ]; then
+        echo "${red}OFF${reset}"; return
+    fi
+    # Определяем режим по конфигу Xray
+    local mode="OFF"
+    if [ -f "$configPath" ]; then
+        local warp_rule
+        warp_rule=$(jq -r '.routing.rules[] | select(.outboundTag=="warp") | if .port == "0-65535" then "Global" elif (.domain | length) > 0 then "Split" else "OFF" end' "$configPath" 2>/dev/null | head -1)
+        [ -n "$warp_rule" ] && mode="$warp_rule"
+    fi
+    case "$mode" in
+        Global) echo "${green}ACTIVE | Global${reset}" ;;
+        Split)  echo "${green}ACTIVE | Split${reset}" ;;
+        *)      echo "${yellow}ACTIVE | маршрут OFF${reset}" ;;
+    esac
 }
 
 getBbrStatus() {

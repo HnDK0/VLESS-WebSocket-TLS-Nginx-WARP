@@ -16,7 +16,19 @@ getPsiphonStatus() {
     if systemctl is-active --quiet psiphon 2>/dev/null; then
         local country=""
         [ -f "$psiphonConfigFile" ] && country=$(jq -r '.EgressRegion // ""' "$psiphonConfigFile" 2>/dev/null)
-        echo "${green}ON${country:+ ($country)}${reset}"
+        # Определяем режим по конфигу Xray
+        local mode="маршрут OFF"
+        if [ -f "$configPath" ]; then
+            local ps_rule
+            ps_rule=$(jq -r '.routing.rules[] | select(.outboundTag=="psiphon") | if .port == "0-65535" then "Global" elif (.domain | length) > 0 then "Split" else "OFF" end' "$configPath" 2>/dev/null | head -1)
+            [ -n "$ps_rule" ] && mode="$ps_rule"
+        fi
+        local country_str="${country:+, $country}"
+        case "$mode" in
+            Global) echo "${green}ON | Global${country_str}${reset}" ;;
+            Split)  echo "${green}ON | Split${country_str}${reset}" ;;
+            *)      echo "${yellow}ON | маршрут OFF${country_str}${reset}" ;;
+        esac
     else
         echo "${red}OFF${reset}"
     fi
@@ -330,6 +342,7 @@ managePsiphon() {
             10) removePsiphon ;;
             0)  break ;;
         esac
+        [ "${choice}" = "0" ] && continue
         echo -e "\n${cyan}Нажмите Enter...${reset}"
         read -r
     done

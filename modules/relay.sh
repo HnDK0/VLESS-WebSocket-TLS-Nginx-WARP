@@ -8,11 +8,18 @@ getRelayStatus() {
         echo "${red}OFF${reset}"; return
     fi
     source "$relayConfigFile"
-    local mode="Split"
+    # Определяем режим по конфигу Xray
+    local mode="маршрут OFF"
     if [ -f "$configPath" ]; then
-        jq -e '.routing.rules[] | select(.outboundTag=="relay" and .port=="0-65535")' "$configPath" &>/dev/null && mode="Global"
+        local relay_rule
+        relay_rule=$(jq -r '.routing.rules[] | select(.outboundTag=="relay") | if .port == "0-65535" then "Global" elif (.domain | length) > 0 then "Split" else "OFF" end' "$configPath" 2>/dev/null | head -1)
+        [ -n "$relay_rule" ] && mode="$relay_rule"
     fi
-    echo "${green}ON ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT | $mode)${reset}"
+    case "$mode" in
+        Global) echo "${green}ON | Global ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT)${reset}" ;;
+        Split)  echo "${green}ON | Split ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT)${reset}" ;;
+        *)      echo "${yellow}ON | маршрут OFF ($RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT)${reset}" ;;
+    esac
 }
 
 parseRelayUrl() {
@@ -279,6 +286,7 @@ manageRelay() {
                 ;;
             0) break ;;
         esac
+        [ "${choice}" = "0" ] && continue
         echo -e "\n${cyan}Нажмите Enter...${reset}"
         read -r
     done
