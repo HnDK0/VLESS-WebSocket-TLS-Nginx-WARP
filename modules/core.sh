@@ -97,6 +97,46 @@ setupAlias() {
     ln -sf "$VWN_LIB/../bin/vwn" /usr/local/bin/vwn 2>/dev/null || true
 }
 
+setupSwap() {
+    # Если swap уже есть — не трогаем
+    local swap_total
+    swap_total=$(free -m | awk '/^Swap:/{print $2}')
+    if [ "${swap_total:-0}" -gt 256 ]; then
+        echo "info: Swap already exists (${swap_total}MB), skipping."
+        return 0
+    fi
+
+    # Определяем размер swap в зависимости от RAM
+    local ram_mb swap_mb
+    ram_mb=$(free -m | awk '/^Mem:/{print $2}')
+    if   [ "$ram_mb" -le 512 ];  then swap_mb=1024
+    elif [ "$ram_mb" -le 1024 ]; then swap_mb=1024
+    elif [ "$ram_mb" -le 2048 ]; then swap_mb=2048
+    else swap_mb=1024
+    fi
+
+    echo -e "${cyan}$(msg swap_creating) ${swap_mb}MB...${reset}"
+
+    # Создаём swap-файл
+    local swapfile="/swapfile"
+    if fallocate -l "${swap_mb}M" "$swapfile" 2>/dev/null || \
+       dd if=/dev/zero of="$swapfile" bs=1M count="$swap_mb" status=none; then
+        chmod 600 "$swapfile"
+        mkswap "$swapfile" &>/dev/null
+        swapon "$swapfile"
+        # Прописываем в fstab чтобы swap выжил после перезагрузки
+        if ! grep -q "$swapfile" /etc/fstab; then
+            echo "$swapfile none swap sw 0 0" >> /etc/fstab
+        fi
+        # Настраиваем swappiness — не злоупотреблять swap
+        sysctl -w vm.swappiness=10 &>/dev/null
+        grep -q "vm.swappiness" /etc/sysctl.conf || echo "vm.swappiness=10" >> /etc/sysctl.conf
+        echo "${green}$(msg swap_created) ${swap_mb}MB${reset}"
+    else
+        echo "${yellow}$(msg swap_fail)${reset}"
+    fi
+}
+
 generateRandomPath() {
     echo "/$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12)"
 }

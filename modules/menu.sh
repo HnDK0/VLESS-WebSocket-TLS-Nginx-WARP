@@ -6,7 +6,8 @@
 prepareSoftware() {
     identifyOS
     echo "--- [1/3] $(msg install_deps) ---"
-    run_task "Чистка пакетов" "rm -f /var/lib/dpkg/lock* && dpkg --configure -a 2>/dev/null || true"
+    run_task "Swap-файл"        setupSwap
+    run_task "Чистка пакетов"   "rm -f /var/lib/dpkg/lock* && dpkg --configure -a 2>/dev/null || true"
     run_task "Обновление репозиториев" "$PACKAGE_MANAGEMENT_UPDATE"
 
     echo "--- [2/3] $(msg install_deps) ---"

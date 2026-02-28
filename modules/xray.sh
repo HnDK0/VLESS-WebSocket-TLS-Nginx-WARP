@@ -86,28 +86,71 @@ EOF
 }
 
 getConfigInfo() {
-    [ ! -f "$configPath" ] && { echo "${red}$(msg xray_not_installed)${reset}"; return 1; }
-    xray_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$configPath")
-    xray_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path' "$configPath")
-    xray_port=$(jq -r '.inbounds[0].port' "$configPath")
-    xray_userDomain=$(grep 'server_name' "$nginxPath" 2>/dev/null | awk '{print $2}' | tr -d ';' | head -1)
-    [ -z "$xray_userDomain" ] && xray_userDomain=$(getServerIP)
+    if [ ! -f "$configPath" ]; then
+        echo "${red}$(msg xray_not_installed)${reset}" >&2
+        return 1
+    fi
+    xray_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$configPath" 2>/dev/null)
+    xray_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path' "$configPath" 2>/dev/null)
+    xray_port=$(jq -r '.inbounds[0].port' "$configPath" 2>/dev/null)
+    # Ищем строго "server_name", исключая proxy_ssl_server_name и server_name _
+    xray_userDomain=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null \
+        | grep -v 'proxy_ssl' \
+        | grep -v 'server_name\s*_;' \
+        | awk '{print $2}' | tr -d ';' | grep -v '^_$' | head -1)
+    [ -z "$xray_userDomain" ] && xray_userDomain=$(_getPublicIP 2>/dev/null || getServerIP)
+
+    if [ -z "$xray_uuid" ] || [ "$xray_uuid" = "null" ]; then
+        echo "${red}$(msg xray_not_installed)${reset}" >&2
+        return 1
+    fi
 }
 
 getShareUrl() {
     getConfigInfo || return 1
-    local encoded_path
-    encoded_path=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$xray_path'))" 2>/dev/null \
-        || echo "$xray_path" | sed 's|/|%2F|g')
-    echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&type=ws&host=${xray_userDomain}&path=${encoded_path}#${xray_userDomain}"
+    local encoded_path network
+    encoded_path=$(python3 -c \
+        "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=''))" \
+        "$xray_path" 2>/dev/null) || encoded_path=$(printf '%s' "$xray_path" | sed 's|/|%2F|g')
+    network=$(jq -r '.inbounds[0].streamSettings.network' "$configPath" 2>/dev/null)
+    case "$network" in
+        xhttp|h2|h3)
+            echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&type=xhttp&host=${xray_userDomain}&path=${encoded_path}&flow=xtls-rprx-vision#${xray_userDomain}"
+            ;;
+        *)
+            echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&type=ws&host=${xray_userDomain}&path=${encoded_path}#${xray_userDomain}"
+            ;;
+    esac
 }
 
 getQrCode() {
     command -v qrencode &>/dev/null || installPackage "qrencode"
-    local url
-    url=$(getShareUrl) || return 1
-    qrencode -t ANSI "$url"
-    echo -e "\n${green}$url${reset}\n"
+    local has_ws=false has_reality=false
+
+    [ -f "$configPath" ] && has_ws=true
+    [ -f "$realityConfigPath" ] && has_reality=true
+
+    if ! $has_ws && ! $has_reality; then
+        echo "${red}$(msg xray_not_installed)${reset}"
+        return 1
+    fi
+
+    if $has_ws; then
+        echo -e "${cyan}=== Vless WS+TLS ===${reset}"
+        local url
+        url=$(getShareUrl)
+        if [ -n "$url" ]; then
+            qrencode -t ANSI "$url" 2>/dev/null || true
+            echo -e "\n${green}$url${reset}\n"
+        else
+            echo "${red}$(msg error): getShareUrl${reset}"
+        fi
+    fi
+
+    if $has_reality; then
+        echo -e "${cyan}=== Vless Reality ===${reset}"
+        showRealityQR
+    fi
 }
 
 modifyXrayUUID() {
