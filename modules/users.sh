@@ -1,61 +1,54 @@
 #!/bin/bash
 # =================================================================
-# users.sh — Управление пользователями (multi-UUID)
-# Метки хранятся в /usr/local/etc/xray/users.conf
-# Формат: UUID|LABEL
+# users.sh — Управление пользователями
+# Формат users.conf: UUID|LABEL|TOKEN
+# Sub URL: https://<domain>/sub/<label>_<token>.txt
 # =================================================================
 
 USERS_FILE="/usr/local/etc/xray/users.conf"
+SUB_DIR="/usr/local/etc/xray/sub"
 
-# ── Внутренние утилиты ────────────────────────────────────────────
+# ── Утилиты ───────────────────────────────────────────────────────
 
-_usersCount() {
-    [ -f "$USERS_FILE" ] && grep -c '.' "$USERS_FILE" 2>/dev/null || echo 0
+_usersCount() { [ -f "$USERS_FILE" ] && grep -c '.' "$USERS_FILE" 2>/dev/null || echo 0; }
+_uuidByLine()  { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f1; }
+_labelByLine() { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f2; }
+_tokenByLine() { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f3; }
+_genToken()    { head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12; }
+_safeLabel()   { echo "$1" | tr -cd 'A-Za-z0-9_-'; }
+_subFilename() { echo "$(_safeLabel "$1")_${2}.txt"; }
+
+# Домен из xhttpSettings.host (единственный источник)
+_getDomain() {
+    local d=""
+    [ -f "$configPath" ] && \
+        d=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.host // ""' "$configPath" 2>/dev/null)
+    echo "$d"
 }
 
-_uuidByLine() {
-    sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f1
-}
+# ── Применить users.conf в оба конфига Xray ───────────────────────
 
-_labelByLine() {
-    sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f2
-}
-
-# Применяет текущий users.conf в оба конфига Xray
 _applyUsersToConfigs() {
     [ ! -f "$USERS_FILE" ] && return 0
 
-    # Reality — с flow
-    local clients_json="["
-    local first=true
-    while IFS='|' read -r uuid label; do
+    local clients_r="[" clients_x="[" first_r=true first_x=true
+    while IFS='|' read -r uuid label token; do
         [ -z "$uuid" ] && continue
-        $first || clients_json+=","
-        clients_json+="{\"id\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"email\":\"${label}\"}"
-        first=false
+        $first_r || clients_r+=","
+        clients_r+="{\"id\":\"${uuid}\",\"flow\":\"xtls-rprx-vision\",\"email\":\"${label}\"}"
+        first_r=false
+        $first_x || clients_x+=","
+        clients_x+="{\"id\":\"${uuid}\",\"email\":\"${label}\"}"
+        first_x=false
     done < "$USERS_FILE"
-    clients_json+="]"
-
-    # XHTTP — без flow
-    local clients_json_ws="["
-    first=true
-    while IFS='|' read -r uuid label; do
-        [ -z "$uuid" ] && continue
-        $first || clients_json_ws+=","
-        clients_json_ws+="{\"id\":\"${uuid}\",\"email\":\"${label}\"}"
-        first=false
-    done < "$USERS_FILE"
-    clients_json_ws+="]"
+    clients_r+="]"; clients_x+="]"
 
     if [ -f "$configPath" ]; then
-        jq --argjson c "$clients_json_ws" \
-            '.inbounds[0].settings.clients = $c' \
+        jq --argjson c "$clients_x" '.inbounds[0].settings.clients = $c' \
             "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
     fi
-
     if [ -f "$realityConfigPath" ]; then
-        jq --argjson c "$clients_json" \
-            '.inbounds[0].settings.clients = $c' \
+        jq --argjson c "$clients_r" '.inbounds[0].settings.clients = $c' \
             "$realityConfigPath" > "${realityConfigPath}.tmp" && mv "${realityConfigPath}.tmp" "$realityConfigPath"
     fi
 
@@ -63,9 +56,10 @@ _applyUsersToConfigs() {
     systemctl restart xray-reality 2>/dev/null || true
 }
 
-# Инициализация — если users.conf не существует, создаём из текущего конфига
+# ── Инициализация ─────────────────────────────────────────────────
+
 _initUsersFile() {
-    if [ -f "$USERS_FILE" ]; then return 0; fi
+    [ -f "$USERS_FILE" ] && return 0
     mkdir -p "$(dirname "$USERS_FILE")"
 
     local existing_uuid=""
@@ -76,9 +70,61 @@ _initUsersFile() {
     fi
 
     if [ -n "$existing_uuid" ] && [ "$existing_uuid" != "null" ]; then
-        echo "${existing_uuid}|default" > "$USERS_FILE"
+        echo "${existing_uuid}|default|$(_genToken)" > "$USERS_FILE"
         echo "${green}$(msg users_migrated): $existing_uuid${reset}"
     fi
+}
+
+# ── Subscription ──────────────────────────────────────────────────
+
+buildUserSubFile() {
+    local uuid="$1" label="$2" token="$3"
+    mkdir -p "$SUB_DIR"
+    applyNginxSub 2>/dev/null || true
+
+    local domain lines=""
+    domain=$(_getDomain)
+
+    if [ -f "$configPath" ] && [ -n "$domain" ]; then
+        local xp xep
+        xp=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
+        xep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" "$xp" 2>/dev/null)
+        lines+="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=xhttp&host=${domain}&path=${xep}#${label}"$'\n'
+    fi
+
+    if [ -f "$realityConfigPath" ]; then
+        local r_port r_shortId r_destHost r_pubKey r_serverIP
+        r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
+        r_shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath" 2>/dev/null)
+        r_destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath" 2>/dev/null)
+        r_pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
+        r_serverIP=$(getServerIP)
+        lines+="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${label}-Reality"$'\n'
+    fi
+
+    local filename
+    filename=$(_subFilename "$label" "$token")
+    printf '%s' "$lines" | base64 -w 0 > "${SUB_DIR}/${filename}"
+    chmod 644 "${SUB_DIR}/${filename}"
+}
+
+rebuildAllSubFiles() {
+    [ ! -f "$USERS_FILE" ] && return 0
+    applyNginxSub 2>/dev/null || true
+    local count=0
+    while IFS='|' read -r uuid label token; do
+        [ -z "$uuid" ] && continue
+        buildUserSubFile "$uuid" "$label" "$token" && count=$((count+1))
+    done < "$USERS_FILE"
+    echo "${green}$(msg done) ($count)${reset}"
+}
+
+getSubUrl() {
+    local label="$1" token="$2"
+    local domain
+    domain=$(_getDomain)
+    [ -z "$domain" ] && { echo ""; return 1; }
+    echo "https://${domain}/sub/$(_subFilename "$label" "$token")"
 }
 
 # ── Список ────────────────────────────────────────────────────────
@@ -90,13 +136,12 @@ showUsersList() {
     if [ "$count" -eq 0 ]; then
         echo "${yellow}$(msg users_empty)${reset}"; return 1
     fi
-    echo -e "${cyan}$(msg users_list) ($count):${reset}"
-    echo ""
+    echo -e "${cyan}$(msg users_list) ($count):${reset}\n"
     local i=1
-    while IFS='|' read -r uuid label; do
+    while IFS='|' read -r uuid label token; do
         [ -z "$uuid" ] && continue
         printf "  ${green}%2d.${reset} %-20s  %s\n" "$i" "$label" "$uuid"
-        i=$((i + 1))
+        i=$((i+1))
     done < "$USERS_FILE"
     echo ""
 }
@@ -108,37 +153,33 @@ addUser() {
     read -rp "$(msg users_label_prompt)" label
     [ -z "$label" ] && label="user$(( $(_usersCount) + 1 ))"
     label=$(echo "$label" | tr -d '|')
-
-    local new_uuid
-    new_uuid=$(cat /proc/sys/kernel/random/uuid)
-    echo "${new_uuid}|${label}" >> "$USERS_FILE"
+    local uuid token
+    uuid=$(cat /proc/sys/kernel/random/uuid)
+    token=$(_genToken)
+    echo "${uuid}|${label}|${token}" >> "$USERS_FILE"
     _applyUsersToConfigs
-    buildUserSubFile "$new_uuid" "$label" 2>/dev/null || true
-    echo "${green}$(msg users_added): $label ($new_uuid)${reset}"
+    buildUserSubFile "$uuid" "$label" "$token" 2>/dev/null || true
+    echo "${green}$(msg users_added): $label ($uuid)${reset}"
 }
 
 deleteUser() {
     _initUsersFile
     local count
     count=$(_usersCount)
-    if [ "$count" -eq 0 ]; then echo "${yellow}$(msg users_empty)${reset}"; return; fi
-    if [ "$count" -eq 1 ]; then echo "${red}$(msg users_last_warn)${reset}"; return; fi
-
+    [ "$count" -eq 0 ] && { echo "${yellow}$(msg users_empty)${reset}"; return; }
+    [ "$count" -eq 1 ] && { echo "${red}$(msg users_last_warn)${reset}"; return; }
     showUsersList
     read -rp "$(msg users_del_prompt)" num
     if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt "$count" ]; then
         echo "${red}$(msg invalid)${reset}"; return 1
     fi
-
-    local label safe_label
+    local label token
     label=$(_labelByLine "$num")
-    safe_label=$(echo "$label" | tr -cd 'A-Za-z0-9_-')
-
+    token=$(_tokenByLine "$num")
     echo -e "${red}$(msg users_del_confirm) '$label'? $(msg yes_no)${reset}"
     read -r confirm
     [[ "$confirm" != "y" ]] && { echo "$(msg cancel)"; return 0; }
-
-    rm -f "/usr/local/etc/xray/sub/${safe_label}.txt"
+    rm -f "${SUB_DIR}/$(_subFilename "$label" "$token")"
     sed -i "${num}d" "$USERS_FILE"
     _applyUsersToConfigs
     echo "${green}$(msg removed): $label${reset}"
@@ -149,26 +190,22 @@ renameUser() {
     local count
     count=$(_usersCount)
     [ "$count" -eq 0 ] && { echo "${yellow}$(msg users_empty)${reset}"; return; }
-
     showUsersList
     read -rp "$(msg users_rename_prompt)" num
     if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt "$count" ]; then
         echo "${red}$(msg invalid)${reset}"; return 1
     fi
-
-    local old_label uuid safe_old
-    old_label=$(_labelByLine "$num")
+    local uuid old_label token
     uuid=$(_uuidByLine "$num")
-    safe_old=$(echo "$old_label" | tr -cd 'A-Za-z0-9_-')
-
+    old_label=$(_labelByLine "$num")
+    token=$(_tokenByLine "$num")
     read -rp "$(msg users_new_label) [$old_label]: " new_label
     [ -z "$new_label" ] && return
     new_label=$(echo "$new_label" | tr -d '|')
-
-    rm -f "/usr/local/etc/xray/sub/${safe_old}.txt"
-    sed -i "${num}s/.*/${uuid}|${new_label}/" "$USERS_FILE"
+    rm -f "${SUB_DIR}/$(_subFilename "$old_label" "$token")"
+    sed -i "${num}s/.*/${uuid}|${new_label}|${token}/" "$USERS_FILE"
     _applyUsersToConfigs
-    buildUserSubFile "$uuid" "$new_label" 2>/dev/null || true
+    buildUserSubFile "$uuid" "$new_label" "$token" 2>/dev/null || true
     echo "${green}$(msg saved): $old_label → $new_label${reset}"
 }
 
@@ -178,60 +215,89 @@ showUserQR() {
     _initUsersFile
     local count
     count=$(_usersCount)
-    if [ "$count" -eq 0 ]; then echo "${yellow}$(msg users_empty)${reset}"; return; fi
-
+    [ "$count" -eq 0 ] && { echo "${yellow}$(msg users_empty)${reset}"; return; }
     showUsersList
     read -rp "$(msg users_qr_prompt)" num
     if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt "$count" ]; then
         echo "${red}$(msg invalid)${reset}"; return 1
     fi
 
-    local uuid label
+    local uuid label token
     uuid=$(_uuidByLine "$num")
     label=$(_labelByLine "$num")
+    token=$(_tokenByLine "$num")
 
     command -v qrencode &>/dev/null || installPackage "qrencode"
 
-    echo -e "${cyan}================================================================${reset}"
-    echo -e "   ${label}"
-    echo -e "${cyan}================================================================${reset}\n"
+    local domain
+    domain=$(_getDomain)
 
     # XHTTP
-    if [ -f "$configPath" ]; then
-        local xp xd xep
-        xp=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' "$configPath" 2>/dev/null)
-        xd=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.host // ""' "$configPath" 2>/dev/null)
-        [ -z "$xd" ] || [ "$xd" = "null" ] && \
-            xd=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null | grep -v '_' | awk '{print $2}' | tr -d ';' | head -1)
+    if [ -f "$configPath" ] && [ -n "$domain" ]; then
+        local xp xep url_xhttp json outfile
+        xp=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
         xep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" "$xp" 2>/dev/null)
-        local url_xhttp="vless://${uuid}@${xd}:443?encryption=none&security=tls&sni=${xd}&fp=chrome&type=xhttp&host=${xd}&path=${xep}#${label}"
-        echo -e "${cyan}[ XHTTP+TLS ]${reset}"
-        qrencode -t ANSI "$url_xhttp" 2>/dev/null || true
-        echo -e "${green}${url_xhttp}${reset}\n"
+        url_xhttp="vless://${uuid}@${domain}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=xhttp&host=${domain}&path=${xep}#${label}"
+
+        echo -e "${cyan}================================================================${reset}"
+        echo -e "   XHTTP+TLS — ${label}"
+        echo -e "${cyan}================================================================${reset}\n"
+
+        echo -e "${cyan}[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]${reset}"
+        qrencode -s 1 -t ANSI "$url_xhttp" 2>/dev/null || true
+        echo -e "\n${green}${url_xhttp}${reset}\n"
+
+        json=$(_getXhttpJsonConfig "$uuid" "$domain" "$xp")
+        outfile="/root/vwn-client-${label}.json"
+        echo -e "${cyan}[ 2. JSON конфиг — v2rayNG: + → Custom config ]${reset}"
+        echo -e "${yellow}${json}${reset}"
+        echo "$json" > "$outfile"
+        echo -e "\n  ${green}Сохранён: $outfile${reset}"
+        echo -e "  Импорт файла: v2rayNG → ☰ → Import config from file\n"
+
+        echo -e "${cyan}[ 3. Clash Meta / Mihomo ]${reset}"
+        echo -e "${yellow}- name: ${label}
+  type: vless
+  server: ${domain}
+  port: 443
+  uuid: ${uuid}
+  tls: true
+  servername: ${domain}
+  client-fingerprint: chrome
+  network: xhttp
+  xhttp-opts:
+    path: ${xp}
+    host: ${domain}
+    mode: stream-one${reset}\n"
+
+        echo -e "${cyan}================================================================${reset}"
     fi
 
     # Reality
     if [ -f "$realityConfigPath" ]; then
-        local r_port r_shortId r_destHost r_pubKey r_serverIP
+        local r_port r_shortId r_destHost r_pubKey r_serverIP url_reality
         r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
         r_shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath" 2>/dev/null)
         r_destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath" 2>/dev/null)
         r_pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
-        r_serverIP=$(_getPublicIP 2>/dev/null || getServerIP)
-        local url_reality="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${label}-Reality"
-        echo -e "${cyan}[ Reality ]${reset}"
-        qrencode -t ANSI "$url_reality" 2>/dev/null || true
-        echo -e "${green}${url_reality}${reset}\n"
+        r_serverIP=$(getServerIP)
+        url_reality="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${label}-Reality"
+
+        echo -e "\n${cyan}=== Reality: ${label} ===${reset}"
+        qrencode -s 1 -t ANSI "$url_reality" 2>/dev/null || true
+        echo -e "\n${green}${url_reality}${reset}\n"
     fi
 
     # Subscription URL
-    buildUserSubFile "$uuid" "$label" 2>/dev/null || true
+    buildUserSubFile "$uuid" "$label" "$token" 2>/dev/null || true
     local sub_url
-    sub_url=$(getSubUrl "$label")
-    echo -e "${cyan}[ Subscription URL — все протоколы сразу ]${reset}"
-    qrencode -t ANSI "$sub_url" 2>/dev/null || true
-    echo -e "${green}${sub_url}${reset}"
-    echo -e "${yellow}v2rayNG: + → Subscription group → URL${reset}"
+    sub_url=$(getSubUrl "$label" "$token")
+    if [ -n "$sub_url" ]; then
+        echo -e "${cyan}[ Subscription URL — все протоколы сразу ]${reset}"
+        qrencode -s 1 -t ANSI "$sub_url" 2>/dev/null || true
+        echo -e "\n${green}${sub_url}${reset}"
+        echo -e "${yellow}v2rayNG: + → Subscription group → URL${reset}"
+    fi
 
     echo -e "\n${cyan}================================================================${reset}"
 }
@@ -243,27 +309,12 @@ manageUsers() {
     _initUsersFile
     while true; do
         clear
-        local has_xhttp=false has_reality=false
-        [ -f "$configPath" ] && has_xhttp=true
-        [ -f "$realityConfigPath" ] && has_reality=true
-
-        echo -e "${cyan}$(msg users_title)${reset}"
-        echo ""
+        echo -e "${cyan}$(msg users_title)${reset}\n"
         showUsersList
-
         echo -e "${green}1.${reset} $(msg users_add)"
         echo -e "${green}2.${reset} $(msg users_del)"
         echo -e "${green}3.${reset} QR + Subscription URL"
         echo -e "${green}4.${reset} $(msg users_rename)"
-        if $has_reality; then
-            echo ""
-            echo -e "  ${cyan}─── Reality ───────────────────────────${reset}"
-            echo -e "${green}5.${reset} $(msg reality_uuid)"
-            echo -e "${green}6.${reset} $(msg reality_port)"
-            echo -e "${green}7.${reset} $(msg reality_dest)"
-            echo -e "${green}8.${reset} $(msg reality_restart)"
-            echo -e "${green}9.${reset} $(msg reality_logs)"
-        fi
         echo ""
         echo -e "${green}0.${reset} $(msg back)"
         echo ""
@@ -273,14 +324,6 @@ manageUsers() {
             2) deleteUser ;;
             3) showUserQR ;;
             4) renameUser ;;
-            5) $has_reality && modifyRealityUUID || echo "${red}Reality не установлен${reset}" ;;
-            6) $has_reality && modifyRealityPort || echo "${red}Reality не установлен${reset}" ;;
-            7) $has_reality && modifyRealityDest || echo "${red}Reality не установлен${reset}" ;;
-            8) $has_reality && systemctl restart xray-reality && echo "${green}$(msg restarted)${reset}" \
-                            || echo "${red}Reality не установлен${reset}" ;;
-            9) $has_reality && { journalctl -u xray-reality -n 50 --no-pager
-                                 tail -n 20 /var/log/xray/reality-error.log 2>/dev/null || true; } \
-                            || echo "${red}Reality не установлен${reset}" ;;
             0) break ;;
         esac
         [ "$choice" = "0" ] && continue

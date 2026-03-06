@@ -259,8 +259,7 @@ menu() {
             22) tail -n 80 /var/log/nginx/error.log 2>/dev/null || echo "$(msg no_logs)" ;;
             23) clearLogs ;;
             24) systemctl restart xray xray-reality nginx warp-svc psiphon tor 2>/dev/null || true
-                echo "${green}$(msg all_services_restarted)${reset}"
-                rebuildAllSubFiles &>/dev/null || true ;;
+                echo "${green}$(msg all_services_restarted)${reset}" ;;
             25) updateXrayCore ;;
             26) fullRemove ;;
             27) manageUFW ;;

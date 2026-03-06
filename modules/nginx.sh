@@ -268,19 +268,15 @@ configCert() {
     echo "${green}$(msg ssl_success) $userDomain${reset}"
 }
 
-# Добавляет location /sub/ в уже существующий xray.conf (без полной пересборки конфига)
-# Вызывается при vwn update и из users.sh при первом обращении к подписке
+# Добавляет location /sub/ в существующий xray.conf без полной пересборки
 applyNginxSub() {
     [ ! -f "$nginxPath" ] && return 1
-
-    # Уже есть — ничего не делаем
     grep -q 'location /sub/' "$nginxPath" && return 0
 
     python3 - "$nginxPath" << 'PYEOF'
 import sys, re
 path = sys.argv[1]
-with open(path) as f:
-    c = f.read()
+with open(path) as f: c = f.read()
 block = (
     "\n    location /sub/ {\n"
     "        alias /usr/local/etc/xray/sub/;\n"
@@ -290,8 +286,7 @@ block = (
     "    }\n"
 )
 c = re.sub(r'(\n    location / \{)', block + r'\1', c, count=1)
-with open(path, 'w') as f:
-    f.write(c)
+with open(path, 'w') as f: f.write(c)
 PYEOF
 
     nginx -t && systemctl reload nginx
