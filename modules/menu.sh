@@ -226,6 +226,7 @@ menu() {
         echo -e "  ${green}37.${reset} $(msg menu_users)"
         echo -e "  ${green}38.${reset} $(msg menu_backup)"
         echo -e "  ${green}39.${reset} $(msg menu_cf_update_ip)"
+        echo -e "  ${green}40.${reset} $(msg menu_sub)"
         echo -e "  $(msg menu_sep_exit)"
         echo -e "  ${green}0.${reset}  $(msg menu_exit)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
@@ -242,6 +243,7 @@ menu() {
             8)  modifyDomain ;;
             9)  toggleCdnMode ;;
             39) setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
+            40) showSubUrl ;;
             10) toggleWarpMode ;;
             11) addDomainToWarpProxy ;;
             12) deleteDomainFromWarpProxy ;;

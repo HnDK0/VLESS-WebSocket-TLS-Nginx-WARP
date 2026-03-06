@@ -119,52 +119,144 @@ getShareUrl() {
     echo "vless://${xray_uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${xray_userDomain}"
 }
 
-# JSON конфиг для ручного импорта (v2rayNG Custom config и др.)
-_getXhttpJsonConfig() {
-    local uuid="$1" domain="$2" path="$3"
-    cat << JSONEOF
-{
-  "log": {"loglevel": "warning"},
-  "inbounds": [{
-    "port": 10808,
-    "listen": "127.0.0.1",
-    "protocol": "socks",
-    "settings": {"auth": "noauth", "udp": true}
-  }],
-  "outbounds": [
-    {
-      "tag": "proxy",
-      "protocol": "vless",
-      "settings": {
-        "vnext": [{
-          "address": "${domain}",
-          "port": 443,
-          "users": [{"id": "${uuid}", "encryption": "none"}]
-        }]
-      },
-      "streamSettings": {
-        "network": "xhttp",
-        "security": "tls",
-        "tlsSettings": {
-          "serverName": "${domain}",
-          "fingerprint": "chrome",
-          "alpn": ["http/1.1"]
-        },
-        "xhttpSettings": {
-          "path": "${path}",
-          "host": "${domain}",
-          "mode": "stream-one"
-        }
-      }
-    },
-    {"tag": "direct", "protocol": "freedom"},
-    {"tag": "block",  "protocol": "blackhole"}
-  ],
-  "routing": {
-    "rules": [{"type": "field", "ip": ["geoip:private"], "outboundTag": "direct"}]
-  }
+
+# ── SUBSCRIPTION ─────────────────────────────────────────────────
+
+SUB_DIR="/usr/local/etc/xray/sub"
+SUB_TOKEN_FILE="/usr/local/etc/xray/sub_token"
+
+_getSubToken() {
+    if [ ! -f "$SUB_TOKEN_FILE" ]; then
+        head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32 > "$SUB_TOKEN_FILE"
+        chmod 600 "$SUB_TOKEN_FILE"
+    fi
+    cat "$SUB_TOKEN_FILE"
 }
-JSONEOF
+
+# Генерирует файл подписки (base64 от списка ссылок)
+_buildSubFile() {
+    local token
+    token=$(_getSubToken)
+    mkdir -p "$SUB_DIR"
+
+    local lines=""
+
+    # XHTTP ссылки всех пользователей
+    if [ -f "$configPath" ]; then
+        local xp xd
+        xp=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.path // .inbounds[0].streamSettings.wsSettings.path' "$configPath" 2>/dev/null)
+        xd=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.host // ""' "$configPath" 2>/dev/null)
+        [ -z "$xd" ] || [ "$xd" = "null" ] && \
+            xd=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null | grep -v '_' | awk '{print $2}' | tr -d ';' | head -1)
+        local ep
+        ep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" "$xp" 2>/dev/null)
+
+        if [ -f "$USERS_FILE" ]; then
+            while IFS='|' read -r uuid label; do
+                [ -z "$uuid" ] && continue
+                lines+="vless://${uuid}@${xd}:443?encryption=none&security=tls&sni=${xd}&fp=chrome&type=xhttp&host=${xd}&path=${ep}#${label}"$'\n'
+            done < "$USERS_FILE"
+        else
+            local uuid
+            uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$configPath" 2>/dev/null)
+            lines+="vless://${uuid}@${xd}:443?encryption=none&security=tls&sni=${xd}&fp=chrome&type=xhttp&host=${xd}&path=${ep}#VWN-XHTTP"$'\n'
+        fi
+    fi
+
+    # Reality ссылки всех пользователей
+    if [ -f "$realityConfigPath" ]; then
+        local r_port r_shortId r_destHost r_pubKey r_serverIP
+        r_port=$(jq -r '.inbounds[0].port' "$realityConfigPath" 2>/dev/null)
+        r_shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath" 2>/dev/null)
+        r_destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath" 2>/dev/null)
+        r_pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
+        r_serverIP=$(_getPublicIP 2>/dev/null || getServerIP)
+
+        if [ -f "$USERS_FILE" ]; then
+            while IFS='|' read -r uuid label; do
+                [ -z "$uuid" ] && continue
+                lines+="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${label}-Reality"$'\n'
+            done < "$USERS_FILE"
+        else
+            local r_uuid
+            r_uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$realityConfigPath" 2>/dev/null)
+            lines+="vless://${r_uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#VWN-Reality"$'\n'
+        fi
+    fi
+
+    [ -z "$lines" ] && { echo "${red}$(msg xray_not_installed)${reset}"; return 1; }
+
+    printf '%s' "$lines" | base64 -w 0 > "${SUB_DIR}/${token}.txt"
+    echo "${green}OK${reset}"
+}
+
+# Добавляет/обновляет location в nginx для отдачи подписки
+_setupSubNginx() {
+    local token
+    token=$(_getSubToken)
+    local sub_location="/sub/${token}"
+
+    # Убираем старый блок если есть
+    python3 - "$nginxPath" << 'PYEOF2'
+import sys, re
+path = sys.argv[1]
+with open(path, 'r') as f: content = f.read()
+content = re.sub(r'\n\s*# VWN subscription.*?(?=\n\s*(location|access_log|error_log|\}))', '', content, flags=re.DOTALL)
+with open(path, 'w') as f: f.write(content)
+PYEOF2
+
+    # Вставляем новый блок перед location /
+    python3 - "$nginxPath" "$sub_location" "$SUB_DIR" << 'PYEOF2'
+import sys, re
+path, sub_loc, sub_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, 'r') as f: content = f.read()
+new_block = f"""
+    # VWN subscription
+    location {sub_loc} {{
+        alias {sub_dir}/;
+        try_files $uri =404;
+        default_type text/plain;
+        add_header Content-Disposition 'attachment; filename="sub.txt"';
+        add_header Cache-Control 'no-cache, no-store';
+        add_header Subscription-Userinfo 'upload=0; download=0; total=1099511627776; expire=253402300799';
+    }}
+"""
+content = re.sub(r'(\s+location / \{)', new_block + r'\1', content, count=1)
+with open(path, 'w') as f: f.write(content)
+PYEOF2
+
+    nginx -t &>/dev/null && systemctl reload nginx
+}
+
+showSubUrl() {
+    if [ ! -f "$configPath" ] && [ ! -f "$realityConfigPath" ]; then
+        echo "${red}$(msg xray_not_installed)${reset}"; return 1
+    fi
+    local domain token
+    domain=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null | grep -v '_' | awk '{print $2}' | tr -d ';' | head -1)
+    [ -z "$domain" ] && domain=$(getServerIP)
+    token=$(_getSubToken)
+    local sub_url="https://${domain}/sub/${token}/${token}.txt"
+
+    _buildSubFile || return 1
+    _setupSubNginx
+
+    echo -e "${cyan}================================================================${reset}"
+    echo -e "   Subscription URL"
+    echo -e "${cyan}================================================================${reset}\n"
+    echo -e "${cyan}[ v2rayNG / Hiddify / Nekoray / Clash ]${reset}"
+    echo -e "  + → Add by subscription URL\n"
+    command -v qrencode &>/dev/null || installPackage "qrencode" &>/dev/null
+    qrencode -t ANSI "$sub_url" 2>/dev/null || true
+    echo -e "\n${green}${sub_url}${reset}\n"
+    echo -e "${yellow}Обновить подписку после изменений: vwn → пункт 40${reset}"
+    echo -e "${cyan}================================================================${reset}"
+}
+
+updateSub() {
+    _buildSubFile && _setupSubNginx \
+        && echo "${green}$(msg done)${reset}" \
+        || echo "${red}$(msg error)${reset}"
 }
 
 getQrCode() {
@@ -180,51 +272,24 @@ getQrCode() {
     fi
 
     if $has_xhttp; then
-        getConfigInfo || return 1
+        echo -e "${cyan}=== Vless XHTTP+TLS ===${reset}"
         local url
         url=$(getShareUrl)
-
-        echo -e "${cyan}================================================================${reset}"
-        echo -e "   XHTTP+TLS — форматы подключения"
-        echo -e "${cyan}================================================================${reset}\n"
-
-        # 1. URI + QR
-        echo -e "${cyan}[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]${reset}"
-        qrencode -t ANSI "$url" 2>/dev/null || true
-        echo -e "${green}${url}${reset}\n"
-
-        # 2. JSON конфиг
-        local json outfile="/root/vwn-client-xhttp.json"
-        json=$(_getXhttpJsonConfig "$xray_uuid" "$xray_userDomain" "$xray_path")
-        echo -e "${cyan}[ 2. JSON конфиг — v2rayNG: + → Custom config ]${reset}"
-        echo -e "${yellow}${json}${reset}"
-        echo "$json" > "$outfile"
-        echo -e "\n  ${green}Сохранён: $outfile${reset}"
-        echo -e "  Импорт файла: v2rayNG → ☰ → Import config from file\n"
-
-        # 3. Clash Meta / Mihomo
-        echo -e "${cyan}[ 3. Clash Meta / Mihomo ]${reset}"
-        echo -e "${yellow}- name: VWN-XHTTP
-  type: vless
-  server: ${xray_userDomain}
-  port: 443
-  uuid: ${xray_uuid}
-  tls: true
-  servername: ${xray_userDomain}
-  client-fingerprint: chrome
-  network: xhttp
-  xhttp-opts:
-    path: ${xray_path}
-    host: ${xray_userDomain}
-    mode: stream-one${reset}\n"
-
-        echo -e "${cyan}================================================================${reset}"
+        if [ -n "$url" ]; then
+            qrencode -t ANSI "$url" 2>/dev/null || true
+            echo -e "\n${green}$url${reset}\n"
+        else
+            echo "${red}$(msg error): getShareUrl${reset}"
+        fi
     fi
 
     if $has_reality; then
         echo -e "${cyan}=== Vless Reality ===${reset}"
         showRealityQR
     fi
+
+    echo -e "
+${cyan}Subscription URL (все клиенты сразу):${reset} vwn → пункт 40"
 }
 
 # Валидация домена: только hostname без протокола и пути

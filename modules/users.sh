@@ -118,6 +118,7 @@ addUser() {
     new_uuid=$(cat /proc/sys/kernel/random/uuid)
     echo "${new_uuid}|${label}" >> "$USERS_FILE"
     _applyUsersToConfigs
+    updateSub &>/dev/null || true
     echo "${green}$(msg users_added): $label ($new_uuid)${reset}"
 }
 
@@ -146,6 +147,7 @@ deleteUser() {
 
     sed -i "${num}d" "$USERS_FILE"
     _applyUsersToConfigs
+    updateSub &>/dev/null || true
     echo "${green}$(msg removed): $label${reset}"
 }
 
@@ -177,44 +179,10 @@ showUserQR() {
         [ -z "$xray_userDomain" ] || [ "$xray_userDomain" = "null" ] && \
             xray_userDomain=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null | grep -v '_' | awk '{print $2}' | tr -d ';' | head -1)
         encoded_path=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe=''))" "$xray_path" 2>/dev/null)
-
-        local url_xhttp="vless://${uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${label}"
-
-        echo -e "${cyan}================================================================${reset}"
-        echo -e "   XHTTP+TLS — ${label}"
-        echo -e "${cyan}================================================================${reset}\n"
-
-        # 1. URI + QR
-        echo -e "${cyan}[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]${reset}"
+        local url_xhttp="vless://${uuid}@${xray_userDomain}:443?encryption=none&security=tls&sni=${xray_userDomain}&fp=chrome&alpn=h2%2Chttp%2F1.1&type=xhttp&host=${xray_userDomain}&path=${encoded_path}#${label}"
+        echo -e "${cyan}=== XHTTP+TLS: $label ===${reset}"
         qrencode -t ANSI "$url_xhttp" 2>/dev/null || true
         echo -e "\n${green}$url_xhttp${reset}\n"
-
-        # 2. JSON конфиг
-        local json outfile="/root/vwn-client-${label}.json"
-        json=$(_getXhttpJsonConfig "$uuid" "$xray_userDomain" "$xray_path")
-        echo -e "${cyan}[ 2. JSON конфиг — v2rayNG: + → Custom config ]${reset}"
-        echo -e "${yellow}${json}${reset}"
-        echo "$json" > "$outfile"
-        echo -e "\n  ${green}Сохранён: $outfile${reset}"
-        echo -e "  Импорт файла: v2rayNG → ☰ → Import config from file\n"
-
-        # 3. Clash Meta / Mihomo
-        echo -e "${cyan}[ 3. Clash Meta / Mihomo ]${reset}"
-        echo -e "${yellow}- name: ${label}
-  type: vless
-  server: ${xray_userDomain}
-  port: 443
-  uuid: ${uuid}
-  tls: true
-  servername: ${xray_userDomain}
-  client-fingerprint: chrome
-  network: xhttp
-  xhttp-opts:
-    path: ${xray_path}
-    host: ${xray_userDomain}
-    mode: stream-one${reset}\n"
-
-        echo -e "${cyan}================================================================${reset}"
     fi
 
     # Reality конфиг
@@ -226,12 +194,12 @@ showUserQR() {
         r_pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
         r_serverIP=$(_getPublicIP 2>/dev/null || getServerIP)
         local url_reality="vless://${uuid}@${r_serverIP}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${label}-Reality"
-
-        echo -e "${cyan}=== Reality: ${label} ===${reset}"
+        echo -e "${cyan}=== Reality: $label ===${reset}"
         qrencode -t ANSI "$url_reality" 2>/dev/null || true
         echo -e "\n${green}$url_reality${reset}\n"
     fi
 }
+
 renameUser() {
     _initUsersFile
     local count
@@ -253,6 +221,7 @@ renameUser() {
 
     sed -i "${num}s/.*/${uuid}|${new_label}/" "$USERS_FILE"
     _applyUsersToConfigs
+    updateSub &>/dev/null || true
     echo "${green}$(msg saved): $old_label → $new_label${reset}"
 }
 
