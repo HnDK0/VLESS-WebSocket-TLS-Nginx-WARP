@@ -140,7 +140,6 @@ _initLang() {
     MSG[menu_diag]=$(         [ "$VWN_LANG" = en ] && echo "Diagnostics"               || echo "Диагностика")
     MSG[menu_users]=$(        [ "$VWN_LANG" = en ] && echo "Manage users"              || echo "Управление пользователями")
     MSG[menu_backup]=$(       [ "$VWN_LANG" = en ] && echo "Backup & Restore"          || echo "Бэкап и восстановление")
-    MSG[menu_sub]=$(         [ "$VWN_LANG" = en ] && echo "Subscription URL (all clients)" || echo "Subscription URL (все клиенты)")
     MSG[menu_cf_update_ip]=$( [ "$VWN_LANG" = en ] && echo "Update Cloudflare IPs"     || echo "Обновить IP Cloudflare")
     MSG[menu_sep_exit]=$(     [ "$VWN_LANG" = en ] && echo "─── Exit ────────────────────────────" || echo "─────────────── Выход ────────────────────")
     MSG[menu_exit]=$(         [ "$VWN_LANG" = en ] && echo "Exit"                      || echo "Выйти")

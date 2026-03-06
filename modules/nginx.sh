@@ -102,6 +102,13 @@ server {
         chunked_transfer_encoding on;
     }
 
+    location /sub/ {
+        alias /usr/local/etc/xray/sub/;
+        default_type text/plain;
+        add_header Content-Disposition 'attachment; filename="sub.txt"';
+        add_header Cache-Control 'no-cache, no-store, must-revalidate';
+    }
+
     location / {
         proxy_pass $proxyUrl;
         proxy_http_version 1.1;
