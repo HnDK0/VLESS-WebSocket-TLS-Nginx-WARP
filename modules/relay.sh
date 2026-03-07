@@ -146,15 +146,11 @@ applyRelayDomains() {
     [ ! -f "$relayConfigFile" ] && { echo "${red}$(msg relay_not_configured)${reset}"; return 1; }
     [ ! -f "$relayDomainsFile" ] && touch "$relayDomainsFile"
     local domains_json
-    domains_json=$(awk 'NF {
-        gsub(/^domain:/, "", $1)
-        printf "\"domain:%s\",", $1
-    }' "$relayDomainsFile" | sed 's/,$//')
+    domains_json=$(domainsToJson "$relayDomainsFile")
     applyRelayToConfigs || return 1
     for cfg in "$configPath" "$realityConfigPath"; do
         [ -f "$cfg" ] || continue
-        jq --argjson doms "[$domains_json]" \
-            '(.routing.rules[] | select(.outboundTag == "relay")) |= (.domain = $doms | del(.port))' \
+        jq --argjson doms "[$domains_json]" '(.routing.rules[] | select(.outboundTag == "relay")) |= (.domain = $doms | del(.port))' \
             "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
     done
     systemctl restart xray 2>/dev/null || true

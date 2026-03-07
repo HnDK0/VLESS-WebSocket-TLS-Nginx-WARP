@@ -51,11 +51,7 @@ configWarp() {
 applyWarpDomains() {
     [ ! -f "$warpDomainsFile" ] && printf 'openai.com\nchatgpt.com\noaistatic.com\noaiusercontent.com\nauth0.openai.com\n' > "$warpDomainsFile"
     local domains_json
-    # Читаем домены, убираем случайный двойной префикс domain:domain:
-    domains_json=$(awk 'NF {
-        gsub(/^domain:/, "", $1)
-        printf "\"domain:%s\",", $1
-    }' "$warpDomainsFile" | sed 's/,$//')
+    domains_json=$(domainsToJson "$warpDomainsFile")
 
     local warp_rule="{\"type\":\"field\",\"domain\":[$domains_json],\"outboundTag\":\"warp\"}"
 
@@ -138,6 +134,9 @@ checkWarpStatus() {
 
 addDomainToWarpProxy() {
     read -rp "$(msg warp_domain_add)" domain
+    [ -z "$domain" ] && return
+    # Убираем ведущую точку и префикс domain: при сохранении
+    domain=$(echo "$domain" | sed 's/^domain://;s/^\.//')
     [ -z "$domain" ] && return
     [ ! -f "$warpDomainsFile" ] && touch "$warpDomainsFile"
     if ! grep -q "^${domain}$" "$warpDomainsFile"; then

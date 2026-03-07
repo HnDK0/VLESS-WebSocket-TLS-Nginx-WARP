@@ -257,3 +257,38 @@ checkCertExpiry() {
         echo "${red}SSL: MISSING${reset}"
     fi
 }
+
+# ============================================================
+# УТИЛИТА: нормализация доменов → JSON-массив для Xray routing
+# Использование: domainsToJson /path/to/domains.txt
+# - убирает префикс domain:
+# - убирает ведущую точку (.ru → ru)
+# - конвертирует IDN/кириллику в punycode (xn--)
+# Возвращает строку вида: "domain:foo","domain:bar"
+# ============================================================
+domainsToJson() {
+    local file="$1"
+    [ ! -f "$file" ] && echo "" && return
+    awk 'NF {
+        gsub(/^domain:/, "", $1)
+        gsub(/^\./, "", $1)
+        print $1
+    }' "$file" | python3 -c "
+import sys
+result = []
+for line in sys.stdin:
+    d = line.strip()
+    if not d:
+        continue
+    try:
+        parts = d.split('.')
+        encoded = '.'.join(
+            p.encode('idna').decode('ascii') if p else p
+            for p in parts
+        )
+        result.append('\"domain:' + encoded + '\"')
+    except Exception:
+        result.append('\"domain:' + d + '\"')
+print(','.join(result))
+" | tr -d '\n'
+}

@@ -144,17 +144,13 @@ applyPsiphonDomains() {
     [ ! -f "$psiphonConfigFile" ] && { echo "${red}$(msg psiphon_not_setup)${reset}"; return 1; }
     [ ! -f "$psiphonDomainsFile" ] && touch "$psiphonDomainsFile"
     local domains_json
-    domains_json=$(awk 'NF {
-        gsub(/^domain:/, "", $1)
-        printf "\"domain:%s\",", $1
-    }' "$psiphonDomainsFile" | sed 's/,$//')
+    domains_json=$(domainsToJson "$psiphonDomainsFile")
 
     applyPsiphonOutbound
 
     for cfg in "$configPath" "$realityConfigPath"; do
         [ -f "$cfg" ] || continue
-        jq --argjson doms "[$domains_json]" \
-            '(.routing.rules[] | select(.outboundTag == "psiphon")) |= (.domain = $doms | del(.port))' \
+        jq --argjson doms "[$domains_json]" '(.routing.rules[] | select(.outboundTag == "psiphon")) |= (.domain = $doms | del(.port))' \
             "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
     done
     systemctl restart xray 2>/dev/null || true
