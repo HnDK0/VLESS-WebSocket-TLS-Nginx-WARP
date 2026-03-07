@@ -180,6 +180,10 @@ manageWs() {
         s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
         s_port=$(jq -r '.inbounds[0].port // "—"' "$configPath" 2>/dev/null)
         s_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // "—"' "$configPath" 2>/dev/null)
+        # Обрезаем длинные значения
+        [ ${#s_connect} -gt 35 ] && s_connect="${s_connect:0:32}..."
+        [ ${#s_domain} -gt 30 ]  && s_domain="${s_domain:0:27}..."
+
         echo -e "${cyan}================================================================${reset}"
         printf "   ${red}WebSocket + TLS + Nginx${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
@@ -248,6 +252,9 @@ menu() {
         s_psiphon=$(getPsiphonStatus)
         s_tor=$(getTorStatus)
         s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
+        # Обрезаем длинные значения
+        [ ${#s_connect} -gt 30 ] && s_connect="${s_connect:0:27}..."
+        [ ${#s_warp} -gt 22 ] && s_warp="${s_warp:0:19}..."
 
         echo -e "${cyan}================================================================${reset}"
         printf "   ${red}VWN — VLESS + WARP + REALITY${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"

@@ -265,6 +265,6 @@ checkCertExpiry() {
 # ============================================================
 _pad() {
     local v="$1" w="$2" vis
-    vis=$(printf '%s' "$v" | sed $'s/\033\\[[0-9;]*m//g')
-    printf "%s%*s" "$v" $((w - ${#vis})) ""
-}
+    # Убираем все ANSI/VT100 escape sequences включая ESC(B от tput
+    vis=$(printf '%s' "$v" | sed 's/\x1b\[[0-9;]*[mABCDJKHf]//g; s/\x1b(B//g')
+    printf "%s%*s" "$v" $((w - ${#vis}
