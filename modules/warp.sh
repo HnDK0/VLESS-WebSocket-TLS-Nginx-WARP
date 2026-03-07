@@ -68,7 +68,7 @@ toggleWarpMode() {
     echo "$(msg warp_mode_2)"
     echo "$(msg warp_mode_3)"
     echo "$(msg warp_mode_0)"
-    read -rp "Ваш выбор: " warp_mode
+    read -rp "$(msg prompt_choice_plain)" warp_mode
 
     case "$warp_mode" in
         1)

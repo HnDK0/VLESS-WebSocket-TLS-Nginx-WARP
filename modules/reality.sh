@@ -209,7 +209,7 @@ installReality() {
     echo "2) www.apple.com:443"
     echo "3) www.amazon.com:443"
     echo "$(msg reality_dest_custom)"
-    read -rp "Выбор [1]: " dest_choice
+    read -rp "$(msg prompt_choice)" dest_choice
     case "${dest_choice:-1}" in
         1) dest="microsoft.com:443" ;;
         2) dest="www.apple.com:443" ;;
@@ -322,12 +322,12 @@ modifyRealityDest() {
     echo "2) www.apple.com:443"
     echo "3) www.amazon.com:443"
     echo "$(msg reality_dest_custom)"
-    read -rp "Выбор: " choice
+    read -rp "$(msg prompt_choice_plain)" choice
     case "$choice" in
         1) newDest="microsoft.com:443" ;;
         2) newDest="www.apple.com:443" ;;
         3) newDest="www.amazon.com:443" ;;
-        4) read -rp "Введите dest (host:port): " newDest ;;
+        4) read -rp "$(msg prompt_enter_dest)" newDest ;;
         *) return ;;
     esac
     local newHost="${newDest%%:*}"

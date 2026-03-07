@@ -182,9 +182,9 @@ manageWs() {
         echo -e "   $(msg menu_wspath)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CDN:    $(_pad "$s_cdn" 14) │  SSL: $s_ssl"
-        echo -e "  Xray:   $(_pad "$s_ws" 16) │  Домен:  $s_domain"
+        echo -e "  Xray:   $(_pad "$s_ws" 16) │  $(msg status_domain):  $s_domain"
         [ -n "$s_connect" ] && \
-        echo -e "  $(printf '%*s' 18 '') │  CDN →  ${green}${s_connect}${reset}"
+        echo -e "  $(printf '%*s' 18 '') │  $(msg status_cdn_arrow) ${green}${s_connect}${reset}"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  ${green}1.${reset}  $(msg menu_port)"
         echo -e "  ${green}2.${reset}  $(msg menu_wspath)"

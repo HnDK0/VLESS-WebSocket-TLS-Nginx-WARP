@@ -174,7 +174,7 @@ changeTorCountry() {
     echo " $(msg country_fi)"
     echo " $(msg tor_country_auto)"
     echo "$(msg tor_country_manual)"
-    read -rp "Выбор: " c
+    read -rp "$(msg prompt_choice_plain)" c
     local country
     case "$c" in
         1) country="DE" ;; 2) country="NL" ;; 3) country="US" ;;
@@ -225,14 +225,14 @@ installTorFull() {
     echo " $(msg country_fi)"
     echo " $(msg tor_country_auto)"
     echo "$(msg tor_country_manual)"
-    read -rp "Выбор [9]: " country_choice
+    read -rp "$(msg prompt_choice)" country_choice
 
     local country
     case "${country_choice:-9}" in
         1) country="DE" ;; 2) country="NL" ;; 3) country="US" ;;
         4) country="GB" ;; 5) country="FR" ;; 6) country="SE" ;;
         7) country="CH" ;; 8) country="FI" ;; 9) country="" ;;
-        10) read -rp "Код страны: " country ;;
+        10) read -rp "$(msg prompt_country_code)" country ;;
         *) country="" ;;
     esac
 
@@ -400,7 +400,7 @@ manageTor() {
                 echo "$(msg tor_mode_2)"
                 echo "$(msg tor_mode_3)"
                 echo "$(msg back)"
-                read -rp "Выбор: " mode
+                read -rp "$(msg prompt_choice_plain)" mode
                 case "$mode" in
                     1) toggleTorGlobal ;;
                     2) applyTorDomains ;;

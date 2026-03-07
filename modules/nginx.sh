@@ -123,8 +123,8 @@ server {
     location /sub/ {
         alias /usr/local/etc/xray/sub/;
         default_type text/plain;
-        add_header Content-Disposition 'attachment; filename="${sub_label}.txt"';
-        add_header profile-title "${sub_label}";
+        add_header Content-Disposition "attachment; filename=\"\$sub_label.txt\"";
+        add_header profile-title "\$sub_label";
         add_header Cache-Control 'no-cache, no-store, must-revalidate';
     }
 
@@ -150,8 +150,8 @@ EOF
     flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
     cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
 map \$uri \$sub_label {
-    ~*/sub/(?<label>[^_/]+)_  "${flag} VLESS | \$label";
-    default                    "${flag} VLESS";
+    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${flag} VLESS | \$label";
+    default                                                   "${flag} VLESS";
 }
 MAPEOF
 }
@@ -308,8 +308,8 @@ applyNginxSub() {
     flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
     cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
 map \$uri \$sub_label {
-    ~*/sub/(?<label>[^_/]+)_  "${flag} VLESS | \$label";
-    default                    "${flag} VLESS";
+    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${flag} VLESS | \$label";
+    default                                                   "${flag} VLESS";
 }
 MAPEOF
 
@@ -323,8 +323,8 @@ block = (
     "\n    location /sub/ {\n"
     "        alias /usr/local/etc/xray/sub/;\n"
     "        default_type text/plain;\n"
-    '        add_header Content-Disposition \'attachment; filename="${sub_label}.txt"\';\n'
-    '        add_header profile-title "${sub_label}";\n'
+    '        add_header Content-Disposition "attachment; filename=\\"$sub_label.txt\\"";\n'
+    '        add_header profile-title "$sub_label";\n'
     "        add_header Cache-Control 'no-cache, no-store, must-revalidate';\n"
     "    }\n"
 )

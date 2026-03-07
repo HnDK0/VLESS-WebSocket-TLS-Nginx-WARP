@@ -223,7 +223,7 @@ installPsiphon() {
     echo " $(msg country_se)"
     echo " $(msg psiphon_country_auto)"
     echo "$(msg psiphon_country_manual)"
-    read -rp "Выбор [1]: " country_choice
+    read -rp "$(msg prompt_choice)" country_choice
 
     local country
     case "${country_choice:-1}" in
@@ -256,7 +256,7 @@ changeCountry() {
     echo -e "${cyan}$(msg psiphon_change_country)${reset}"
     echo " 1) DE  2) NL  3) US  4) GB  5) FR"
     echo " $(msg country_at)  $(msg country_ca)  $(msg country_se)  $(msg psiphon_country_auto)  $(msg psiphon_country_manual)"
-    read -rp "Выбор: " c
+    read -rp "$(msg prompt_choice_plain)" c
     local country
     case "$c" in
         1) country="DE" ;; 2) country="NL" ;; 3) country="US" ;;
@@ -308,7 +308,7 @@ managePsiphon() {
                 echo "$(msg psiphon_mode_2)"
                 echo "$(msg psiphon_mode_3)"
                 echo "$(msg back)"
-                read -rp "Выбор: " mode
+                read -rp "$(msg prompt_choice_plain)" mode
                 case "$mode" in
                     1) togglePsiphonGlobal ;;
                     2) applyPsiphonDomains ;;

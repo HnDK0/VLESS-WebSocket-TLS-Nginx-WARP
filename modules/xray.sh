@@ -403,24 +403,24 @@ modifyConnectHost() {
     local current
     current=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
     if [ -n "$current" ]; then
-        echo "Текущий адрес подключения: ${green}${current}${reset}"
+        echo "$(msg connect_host_current): ${green}${current}${reset}"
     else
         getConfigInfo || return 1
-        echo "Текущий адрес подключения: ${green}${xray_userDomain}${reset} (основной домен)"
+        echo "$(msg connect_host_current): ${green}${xray_userDomain}${reset} $(msg connect_host_main)"
     fi
     echo ""
-    echo "Введите CDN домен для подключения (Enter = сбросить на основной домен):"
+    echo "$(msg connect_host_prompt)"
     read -rp "> " new_host
     if [ -z "$new_host" ]; then
         rm -f "$CONNECT_HOST_FILE"
-        echo "${green}Адрес подключения сброшен на основной домен${reset}"
+        echo "${green}$(msg connect_host_reset)${reset}"
     else
         local validated
         if ! validated=$(_validateDomain "$new_host"); then
             echo "${red}$(msg invalid): '$new_host'${reset}"; return 1
         fi
         echo "$validated" > "$CONNECT_HOST_FILE"
-        echo "${green}Адрес подключения: $validated${reset}"
+        echo "${green}$(msg connect_host_set): $validated${reset}"
     fi
     # Пересоздаём подписки с новым адресом
     rebuildAllSubFiles 2>/dev/null || true

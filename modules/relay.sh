@@ -250,7 +250,7 @@ manageRelay() {
                 echo "$(msg relay_mode_2)"
                 echo "$(msg relay_mode_3)"
                 echo "$(msg back)"
-                read -rp "Выбор: " mode
+                read -rp "$(msg prompt_choice_plain)" mode
                 case "$mode" in
                     1) toggleRelayGlobal ;;
                     2) applyRelayDomains ;;

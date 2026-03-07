@@ -17,15 +17,10 @@ _tokenByLine() { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f3; }
 _genToken()    { head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12; }
 _safeLabel()   { echo "$1" | tr -cd 'A-Za-z0-9_-'; }
 _subFilename() {
-    local label="$1" token="$2" flag="$3"
+    local label="$1" token="$2"
     local safe
     safe=$(_safeLabel "$label")
-    if [ -n "$flag" ]; then
-        # Имя файла: "🇲🇩 VLESS | label_token.txt"
-        echo "${flag} VLESS | ${safe}_${token}.txt"
-    else
-        echo "${safe}_${token}.txt"
-    fi
+    echo "${safe}_${token}.txt"
 }
 
 # Получает флаг страны (с кэшем в переменной окружения)
@@ -141,7 +136,7 @@ buildUserSubFile() {
     fi
 
     local filename
-    filename=$(_subFilename "$label" "$token" "$flag")
+    filename=$(_subFilename "$label" "$token")
     printf '%s' "$lines" | base64 -w 0 > "${SUB_DIR}/${filename}"
     chmod 644 "${SUB_DIR}/${filename}"
 }
@@ -159,14 +154,12 @@ rebuildAllSubFiles() {
 
 getSubUrl() {
     local label="$1" token="$2"
-    local domain flag
+    local domain
     domain=$(_getDomain)
     [ -z "$domain" ] && { echo ""; return 1; }
-    flag=$(_getCachedFlag)
-    local encoded_filename
-    encoded_filename=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" \
-        "$(_subFilename "$label" "$token" "$flag")" 2>/dev/null)
-    echo "https://${domain}/sub/${encoded_filename}"
+    local filename
+    filename=$(_subFilename "$label" "$token")
+    echo "https://${domain}/sub/${filename}"
 }
 
 # ── Список ────────────────────────────────────────────────────────
@@ -221,7 +214,7 @@ deleteUser() {
     echo -e "${red}$(msg users_del_confirm) '$label'? $(msg yes_no)${reset}"
     read -r confirm
     [[ "$confirm" != "y" ]] && { echo "$(msg cancel)"; return 0; }
-    rm -f "${SUB_DIR}/$(_subFilename "$label" "$token" "$(_getCachedFlag)")"
+    rm -f "${SUB_DIR}/$(_subFilename "$label" "$token")"
     sed -i "${num}d" "$USERS_FILE"
     _applyUsersToConfigs
     echo "${green}$(msg removed): $label${reset}"
@@ -244,7 +237,7 @@ renameUser() {
     read -rp "$(msg users_new_label) [$old_label]: " new_label
     [ -z "$new_label" ] && return
     new_label=$(echo "$new_label" | tr -d '|')
-    rm -f "${SUB_DIR}/$(_subFilename "$old_label" "$token" "$(_getCachedFlag)")"
+    rm -f "${SUB_DIR}/$(_subFilename "$old_label" "$token")"
     sed -i "${num}s/.*/${uuid}|${new_label}|${token}/" "$USERS_FILE"
     _applyUsersToConfigs
     buildUserSubFile "$uuid" "$new_label" "$token" 2>/dev/null || true
@@ -291,7 +284,7 @@ showUserQR() {
         echo -e "   ${name}"
         echo -e "${cyan}================================================================${reset}\n"
 
-        echo -e "${cyan}[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]${reset}"
+        echo -e "${cyan}[ $(msg qr_uri_title) ]${reset}"
         qrencode -s 1 -m 1 -t ANSIUTF8 "$url_ws" 2>/dev/null || true
         echo -e "\n${green}${url_ws}${reset}\n"
 
@@ -337,10 +330,10 @@ showUserQR() {
     local sub_url
     sub_url=$(getSubUrl "$label" "$token")
     if [ -n "$sub_url" ]; then
-        echo -e "${cyan}[ Subscription URL — все протоколы сразу ]${reset}"
+        echo -e "${cyan}[ $(msg qr_sub_title) ]${reset}"
         qrencode -s 1 -m 1 -t ANSIUTF8 "$sub_url" 2>/dev/null || true
         echo -e "\n${green}${sub_url}${reset}"
-        echo -e "${yellow}v2rayNG: + → Subscription group → URL${reset}"
+        echo -e "${yellow}$(msg qr_sub_hint)${reset}"
     fi
 
     echo -e "\n${cyan}================================================================${reset}"

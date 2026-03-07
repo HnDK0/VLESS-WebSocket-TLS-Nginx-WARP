@@ -444,6 +444,31 @@ _initLang() {
     MSG[country_ch]=$(  [ "$VWN_LANG" = en ] && echo " 7) CH — Switzerland"  || echo " 7) CH — Швейцария")
     MSG[country_fi]=$(  [ "$VWN_LANG" = en ] && echo " 8) FI — Finland"      || echo " 8) FI — Финляндия")
 
+    # ── CONNECT HOST / CDN ────────────────────────────────────────
+    MSG[connect_host_current]=$(  [ "$VWN_LANG" = en ] && echo "Current connection address" || echo "Текущий адрес подключения")
+    MSG[connect_host_main]=$(     [ "$VWN_LANG" = en ] && echo "(main domain)"              || echo "(основной домен)")
+    MSG[connect_host_prompt]=$(   [ "$VWN_LANG" = en ] && echo "Enter CDN domain (Enter = reset to main domain):" || echo "Введите CDN домен для подключения (Enter = сбросить на основной домен):")
+    MSG[connect_host_reset]=$(    [ "$VWN_LANG" = en ] && echo "Connection address reset to main domain." || echo "Адрес подключения сброшен на основной домен.")
+    MSG[connect_host_set]=$(      [ "$VWN_LANG" = en ] && echo "Connection address"         || echo "Адрес подключения")
+
+    # ── USERS / QR ────────────────────────────────────────────────
+    MSG[qr_uri_title]=$(          [ "$VWN_LANG" = en ] && echo "[ 1. URI link (v2rayNG / Hiddify / Nekoray) ]" || echo "[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]")
+    MSG[qr_sub_title]=$(          [ "$VWN_LANG" = en ] && echo "[ Subscription URL — all protocols ]"          || echo "[ Subscription URL — все протоколы сразу ]")
+    MSG[qr_sub_hint]=$(           [ "$VWN_LANG" = en ] && echo "v2rayNG: + → Subscription group → URL"         || echo "v2rayNG: + → Subscription group → URL")
+    MSG[ws_tls_formats]=$(        [ "$VWN_LANG" = en ] && echo "WebSocket+TLS — connection formats"             || echo "WebSocket+TLS — форматы подключения")
+
+    # ── INPUT PROMPTS (generic) ───────────────────────────────────
+    MSG[prompt_choice]=$(         [ "$VWN_LANG" = en ] && echo "Choice [1]: "               || echo "Выбор [1]: ")
+    MSG[prompt_choice_plain]=$(   [ "$VWN_LANG" = en ] && echo "Choice: "                   || echo "Выбор: ")
+    MSG[prompt_enter_dest]=$(     [ "$VWN_LANG" = en ] && echo "Enter dest (host:port): "   || echo "Введите dest (host:port): ")
+    MSG[prompt_enter_url]=$(      [ "$VWN_LANG" = en ] && echo "Paste URL: "                || echo "Вставьте ссылку: ")
+    MSG[prompt_country_code]=$(   [ "$VWN_LANG" = en ] && echo "Country code: "             || echo "Код страны: ")
+    MSG[prompt_bridge_line]=$(    [ "$VWN_LANG" = en ] && echo "Bridge line: "              || echo "Строка моста: ")
+
+    # ── MENU STATUS LABELS ────────────────────────────────────────
+    MSG[status_domain]=$(         [ "$VWN_LANG" = en ] && echo "Domain"                     || echo "Домен")
+    MSG[status_cdn_arrow]=$(      [ "$VWN_LANG" = en ] && echo "CDN →"                      || echo "CDN →")
+
     # ── MISC ──────────────────────────────────────────────────────
     MSG[loading]=$(         [ "$VWN_LANG" = en ] && echo "Loading"           || echo "Загрузка")
     MSG[installed_in]=$(    [ "$VWN_LANG" = en ] && echo "installed in"      || echo "установлен в")
