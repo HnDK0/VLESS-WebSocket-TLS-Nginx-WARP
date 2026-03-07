@@ -65,8 +65,12 @@ _initUsersFile() {
     local existing_uuid=""
     if [ -f "$configPath" ]; then
         existing_uuid=$(jq -r '.inbounds[0].settings.clients[0].id // ""' "$configPath" 2>/dev/null)
-    elif [ -f "$realityConfigPath" ]; then
-        existing_uuid=$(jq -r '.inbounds[0].settings.clients[0].id // ""' "$realityConfigPath" 2>/dev/null)
+    fi
+    # Если в WS нет UUID — берём из Reality
+    if [ -z "$existing_uuid" ] || [ "$existing_uuid" = "null" ]; then
+        if [ -f "$realityConfigPath" ]; then
+            existing_uuid=$(jq -r '.inbounds[0].settings.clients[0].id // ""' "$realityConfigPath" 2>/dev/null)
+        fi
     fi
 
     if [ -n "$existing_uuid" ] && [ "$existing_uuid" != "null" ]; then
@@ -74,7 +78,8 @@ _initUsersFile() {
         token=$(_genToken)
         echo "${existing_uuid}|default|${token}" > "$USERS_FILE"
         echo "${green}$(msg users_migrated): $existing_uuid${reset}"
-        # Сразу строим sub файл чтобы подписка работала
+        # Синхронизируем UUID в оба конфига
+        _applyUsersToConfigs 2>/dev/null || true
         buildUserSubFile "$existing_uuid" "default" "$token" 2>/dev/null || true
     fi
 }

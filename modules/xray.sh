@@ -288,12 +288,34 @@ _validatePort() {
 }
 
 modifyXrayUUID() {
-    local new_uuid
-    new_uuid=$(cat /proc/sys/kernel/random/uuid)
-    jq ".inbounds[0].settings.clients[0].id = \"$new_uuid\"" \
-        "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
-    systemctl restart xray
-    echo "${green}$(msg new_uuid): $new_uuid${reset}"
+    if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+        # Генерируем новый UUID для каждого пользователя
+        local tmp
+        tmp=$(mktemp)
+        while IFS='|' read -r uuid label token; do
+            [ -z "$uuid" ] && continue
+            local new_uuid
+            new_uuid=$(cat /proc/sys/kernel/random/uuid)
+            echo "${new_uuid}|${label}|${token}"
+        done < "$USERS_FILE" > "$tmp"
+        mv "$tmp" "$USERS_FILE"
+        # Синхронизируем оба конфига
+        _applyUsersToConfigs
+        echo "${green}$(msg new_uuid) — все пользователи обновлены${reset}"
+        cat "$USERS_FILE" | while IFS='|' read -r uuid label token; do
+            echo "  $label → $uuid"
+        done
+    else
+        # Нет users.conf — меняем только в конфигах напрямую
+        local new_uuid
+        new_uuid=$(cat /proc/sys/kernel/random/uuid)
+        [ -f "$configPath" ] && jq ".inbounds[0].settings.clients[0].id = \"$new_uuid\"" \
+            "$configPath" > "${configPath}.tmp" && mv "${configPath}.tmp" "$configPath"
+        [ -f "$realityConfigPath" ] && jq ".inbounds[0].settings.clients[0].id = \"$new_uuid\"" \
+            "$realityConfigPath" > "${realityConfigPath}.tmp" && mv "${realityConfigPath}.tmp" "$realityConfigPath"
+        systemctl restart xray xray-reality 2>/dev/null || true
+        echo "${green}$(msg new_uuid): $new_uuid${reset}"
+    fi
 }
 
 modifyXrayPort() {
