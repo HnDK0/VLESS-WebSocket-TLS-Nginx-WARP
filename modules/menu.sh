@@ -254,7 +254,7 @@ menu() {
         echo -e "  ${green}1.${reset}  $(msg menu_install)"
         echo -e "  ${green}2.${reset}  $(msg menu_users)"
         echo -e "  $(msg menu_sep_tun)"
-        echo -e "  ${green}3.${reset}  WS + CDN"
+        echo -e "  ${green}3.${reset}  $(msg menu_ws)"
         echo -e "  ${green}4.${reset}  $(msg menu_reality)"
         echo -e "  ${green}5.${reset}  $(msg menu_relay)"
         echo -e "  ${green}6.${reset}  $(msg menu_psiphon)"
