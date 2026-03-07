@@ -373,9 +373,9 @@ manageTor() {
         echo -e "${cyan}================================================================${reset}"
         printf "   ${red}$(msg tor_title)${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  $(msg status):  $s_tor"
+        echo -e "  $(msg status): $s_tor"
         if command -v tor &>/dev/null; then
-            echo -e "  $(msg country):  ${green}${s_country}${reset},  $(msg tor_bridges_status): $s_bridges,  SOCKS5: 127.0.0.1:$TOR_PORT,  $(msg domains_count): ${green}${s_domains:-0}${reset}"
+            echo -e "  $(msg country): ${green}${s_country}${reset},  $(msg tor_bridges_status): $s_bridges,  SOCKS5: 127.0.0.1:$TOR_PORT,  $(msg domains_count): ${green}${s_domains:-0}${reset}"
         fi
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo ""

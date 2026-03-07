@@ -283,9 +283,9 @@ managePsiphon() {
         echo -e "${cyan}================================================================${reset}"
         printf "   ${red}$(msg psiphon_title)${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  $(msg status):  $s_psiphon"
+        echo -e "  $(msg status): $s_psiphon"
         if [ -f "$psiphonConfigFile" ]; then
-            echo -e "  $(msg country):  ${green}${s_country:-$(msg auto)}${reset},  SOCKS5: 127.0.0.1:$PSIPHON_PORT,  $(msg domains_count): ${green}${s_domains:-0}${reset}"
+            echo -e "  $(msg country): ${green}${s_country:-$(msg auto)}${reset},  SOCKS5: 127.0.0.1:$PSIPHON_PORT,  $(msg domains_count): ${green}${s_domains:-0}${reset}"
         fi
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo ""
