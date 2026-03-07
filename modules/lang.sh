@@ -131,6 +131,7 @@ _initLang() {
     MSG[menu_ssl_cron]=$(     [ "$VWN_LANG" = en ] && echo "Manage SSL auto-renewal"   || echo "Управление автообновлением SSL")
     MSG[menu_log_cron]=$(     [ "$VWN_LANG" = en ] && echo "Manage log auto-clear"     || echo "Управление автоочисткой логов")
     MSG[menu_sep_tun]=$(      [ "$VWN_LANG" = en ] && echo "─── Tunnels ─────────────────────────" || echo "─────────────── Туннели ──────────────────")
+    MSG[menu_ws]=$(           [ "$VWN_LANG" = en ] && echo "Manage VLESS + Reality"    || echo "Управление WS + CDN")
     MSG[menu_reality]=$(      [ "$VWN_LANG" = en ] && echo "Manage VLESS + Reality"    || echo "Управление VLESS + Reality")
     MSG[menu_relay]=$(        [ "$VWN_LANG" = en ] && echo "Manage Relay (external)"   || echo "Управление Relay (внешний сервер)")
     MSG[menu_psiphon]=$(      [ "$VWN_LANG" = en ] && echo "Manage Psiphon"            || echo "Управление Psiphon")
