@@ -50,7 +50,12 @@ writeXrayConfig() {
     local wsPath="$2"
     local domain="$3"
     local new_uuid
-    new_uuid=$(cat /proc/sys/kernel/random/uuid)
+    local USERS_FILE="${USERS_FILE:-/usr/local/etc/xray/users.conf}"
+    # Если users.conf уже есть — берём UUID первого пользователя
+    if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+        new_uuid=$(cut -d'|' -f1 "$USERS_FILE" | head -1)
+    fi
+    [ -z "$new_uuid" ] && new_uuid=$(cat /proc/sys/kernel/random/uuid)
     mkdir -p /usr/local/etc/xray /var/log/xray
 
     cat > "$configPath" << EOF
@@ -403,24 +408,24 @@ modifyConnectHost() {
     local current
     current=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
     if [ -n "$current" ]; then
-        echo "$(msg connect_host_current): ${green}${current}${reset}"
+        echo "Текущий адрес подключения: ${green}${current}${reset}"
     else
         getConfigInfo || return 1
-        echo "$(msg connect_host_current): ${green}${xray_userDomain}${reset} $(msg connect_host_main)"
+        echo "Текущий адрес подключения: ${green}${xray_userDomain}${reset} (основной домен)"
     fi
     echo ""
-    echo "$(msg connect_host_prompt)"
+    echo "Введите CDN домен для подключения (Enter = сбросить на основной домен):"
     read -rp "> " new_host
     if [ -z "$new_host" ]; then
         rm -f "$CONNECT_HOST_FILE"
-        echo "${green}$(msg connect_host_reset)${reset}"
+        echo "${green}Адрес подключения сброшен на основной домен${reset}"
     else
         local validated
         if ! validated=$(_validateDomain "$new_host"); then
             echo "${red}$(msg invalid): '$new_host'${reset}"; return 1
         fi
         echo "$validated" > "$CONNECT_HOST_FILE"
-        echo "${green}$(msg connect_host_set): $validated${reset}"
+        echo "${green}Адрес подключения: $validated${reset}"
     fi
     # Пересоздаём подписки с новым адресом
     rebuildAllSubFiles 2>/dev/null || true

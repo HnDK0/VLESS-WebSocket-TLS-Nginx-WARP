@@ -14,7 +14,7 @@ _usersCount() { [ -f "$USERS_FILE" ] && grep -c '.' "$USERS_FILE" 2>/dev/null ||
 _uuidByLine()  { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f1; }
 _labelByLine() { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f2; }
 _tokenByLine() { sed -n "${1}p" "$USERS_FILE" | cut -d'|' -f3; }
-_genToken()    { head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12; }
+_genToken()    { head /dev/urandom | tr -dc A-Za-z0-9 | head -c 24; }
 _safeLabel()   { echo "$1" | tr -cd 'A-Za-z0-9_-'; }
 _subFilename() {
     local label="$1" token="$2"
@@ -135,8 +135,11 @@ buildUserSubFile() {
         lines+="vless://${r_uuid}@${server_ip}:${r_port}?encryption=none&security=reality&sni=${r_destHost}&fp=chrome&pbk=${r_pubKey}&sid=${r_shortId}&type=tcp&flow=xtls-rprx-vision#${r_encoded_name}"$'\n'
     fi
 
-    local filename
+    local filename safe
+    safe=$(_safeLabel "$label")
     filename=$(_subFilename "$label" "$token")
+    # Удаляем старые файлы этого label (любой токен) перед записью нового
+    rm -f "${SUB_DIR}/${safe}_"*.txt
     printf '%s' "$lines" | base64 -w 0 > "${SUB_DIR}/${filename}"
     chmod 644 "${SUB_DIR}/${filename}"
 }
@@ -157,9 +160,7 @@ getSubUrl() {
     local domain
     domain=$(_getDomain)
     [ -z "$domain" ] && { echo ""; return 1; }
-    local filename
-    filename=$(_subFilename "$label" "$token")
-    echo "https://${domain}/sub/${filename}"
+    echo "https://${domain}/sub/$(_subFilename "$label" "$token")"
 }
 
 # ── Список ────────────────────────────────────────────────────────
@@ -208,13 +209,14 @@ deleteUser() {
     if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt "$count" ]; then
         echo "${red}$(msg invalid)${reset}"; return 1
     fi
-    local label token
+    local label token safe
     label=$(_labelByLine "$num")
     token=$(_tokenByLine "$num")
+    safe=$(_safeLabel "$label")
     echo -e "${red}$(msg users_del_confirm) '$label'? $(msg yes_no)${reset}"
     read -r confirm
     [[ "$confirm" != "y" ]] && { echo "$(msg cancel)"; return 0; }
-    rm -f "${SUB_DIR}/$(_subFilename "$label" "$token")"
+    rm -f "${SUB_DIR}/${safe}_"*.txt
     sed -i "${num}d" "$USERS_FILE"
     _applyUsersToConfigs
     echo "${green}$(msg removed): $label${reset}"
@@ -230,14 +232,15 @@ renameUser() {
     if ! [[ "$num" =~ ^[0-9]+$ ]] || [ "$num" -lt 1 ] || [ "$num" -gt "$count" ]; then
         echo "${red}$(msg invalid)${reset}"; return 1
     fi
-    local uuid old_label token
+    local uuid old_label token old_safe
     uuid=$(_uuidByLine "$num")
     old_label=$(_labelByLine "$num")
     token=$(_tokenByLine "$num")
+    old_safe=$(_safeLabel "$old_label")
     read -rp "$(msg users_new_label) [$old_label]: " new_label
     [ -z "$new_label" ] && return
     new_label=$(echo "$new_label" | tr -d '|')
-    rm -f "${SUB_DIR}/$(_subFilename "$old_label" "$token")"
+    rm -f "${SUB_DIR}/${old_safe}_"*.txt
     sed -i "${num}s/.*/${uuid}|${new_label}|${token}/" "$USERS_FILE"
     _applyUsersToConfigs
     buildUserSubFile "$uuid" "$new_label" "$token" 2>/dev/null || true
@@ -284,7 +287,7 @@ showUserQR() {
         echo -e "   ${name}"
         echo -e "${cyan}================================================================${reset}\n"
 
-        echo -e "${cyan}[ $(msg qr_uri_title) ]${reset}"
+        echo -e "${cyan}[ 1. URI ссылка (v2rayNG / Hiddify / Nekoray) ]${reset}"
         qrencode -s 1 -m 1 -t ANSIUTF8 "$url_ws" 2>/dev/null || true
         echo -e "\n${green}${url_ws}${reset}\n"
 
@@ -330,10 +333,10 @@ showUserQR() {
     local sub_url
     sub_url=$(getSubUrl "$label" "$token")
     if [ -n "$sub_url" ]; then
-        echo -e "${cyan}[ $(msg qr_sub_title) ]${reset}"
+        echo -e "${cyan}[ Subscription URL — все протоколы сразу ]${reset}"
         qrencode -s 1 -m 1 -t ANSIUTF8 "$sub_url" 2>/dev/null || true
         echo -e "\n${green}${sub_url}${reset}"
-        echo -e "${yellow}$(msg qr_sub_hint)${reset}"
+        echo -e "${yellow}v2rayNG: + → Subscription group → URL${reset}"
     fi
 
     echo -e "\n${cyan}================================================================${reset}"

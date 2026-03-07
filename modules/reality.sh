@@ -20,6 +20,7 @@ writeRealityConfig() {
 
     echo -e "${cyan}$(msg reality_keygen)${reset}"
     local keys privKey pubKey shortId new_uuid
+    local USERS_FILE="${USERS_FILE:-/usr/local/etc/xray/users.conf}"
 
     keys=$(/usr/local/bin/xray x25519 2>/dev/null) || { echo "${red}$(msg reality_keys_fail)${reset}"; return 1; }
     privKey=$(echo "$keys" | tr -d '\r' | awk '/PrivateKey:/{print $2}')
@@ -27,7 +28,11 @@ writeRealityConfig() {
     [ -z "$privKey" ] || [ -z "$pubKey" ] && { echo "${red}$(msg reality_keys_err)${reset}"; return 1; }
 
     shortId=$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-16)
-    new_uuid=$(cat /proc/sys/kernel/random/uuid)
+    # Если users.conf уже есть — берём UUID первого пользователя
+    if [ -f "$USERS_FILE" ] && [ -s "$USERS_FILE" ]; then
+        new_uuid=$(cut -d'|' -f1 "$USERS_FILE" | head -1)
+    fi
+    [ -z "$new_uuid" ] && new_uuid=$(cat /proc/sys/kernel/random/uuid)
 
     mkdir -p /usr/local/etc/xray
 
@@ -209,7 +214,7 @@ installReality() {
     echo "2) www.apple.com:443"
     echo "3) www.amazon.com:443"
     echo "$(msg reality_dest_custom)"
-    read -rp "$(msg prompt_choice)" dest_choice
+    read -rp "Выбор [1]: " dest_choice
     case "${dest_choice:-1}" in
         1) dest="microsoft.com:443" ;;
         2) dest="www.apple.com:443" ;;
@@ -286,7 +291,7 @@ showRealityQR() {
 
     local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#Reality-${serverIP}"
     command -v qrencode &>/dev/null || installPackage "qrencode"
-    qrencode -t ANSI "$url"
+    qrencode -s 1 -m 1 -t ANSIUTF8 "$url"
     echo -e "\n${green}$url${reset}\n"
 }
 
@@ -322,12 +327,12 @@ modifyRealityDest() {
     echo "2) www.apple.com:443"
     echo "3) www.amazon.com:443"
     echo "$(msg reality_dest_custom)"
-    read -rp "$(msg prompt_choice_plain)" choice
+    read -rp "Выбор: " choice
     case "$choice" in
         1) newDest="microsoft.com:443" ;;
         2) newDest="www.apple.com:443" ;;
         3) newDest="www.amazon.com:443" ;;
-        4) read -rp "$(msg prompt_enter_dest)" newDest ;;
+        4) read -rp "Введите dest (host:port): " newDest ;;
         *) return ;;
     esac
     local newHost="${newDest%%:*}"

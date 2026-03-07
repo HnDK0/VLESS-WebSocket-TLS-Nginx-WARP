@@ -3,6 +3,10 @@
 # nginx.sh — Nginx конфиг, CDN, SSL сертификаты
 # =================================================================
 
+_percentEncode() {
+    printf '%s' "$1" | od -An -tx1 | tr -d ' \n' | sed 's/../%&/g' | tr 'a-f' 'A-F'
+}
+
 setNginxCert() {
     [ ! -d '/etc/nginx/cert' ] && mkdir -p '/etc/nginx/cert'
     if [ ! -f /etc/nginx/cert/default.crt ]; then
@@ -145,13 +149,14 @@ server {
 EOF
 
     # Генерируем map-блок для красивых имён файлов подписки
-    local server_ip flag
+    local server_ip flag encoded_prefix
     server_ip=$(getServerIP 2>/dev/null || curl -s --connect-timeout 5 ifconfig.me)
     flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
+    encoded_prefix=$(_percentEncode "${flag} VLESS | ")
     cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
 map \$uri \$sub_label {
-    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${flag} VLESS | \$label";
-    default                                                   "${flag} VLESS";
+    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${encoded_prefix}\$label";
+    default                                                   "${encoded_prefix}";
 }
 MAPEOF
 }
@@ -303,13 +308,14 @@ applyNginxSub() {
     [ ! -f "$nginxPath" ] && return 1
 
     # Обновляем/создаём sub_map.conf с актуальным флагом
-    local server_ip flag
+    local server_ip flag encoded_prefix
     server_ip=$(getServerIP 2>/dev/null || curl -s --connect-timeout 5 ifconfig.me)
     flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
+    encoded_prefix=$(_percentEncode "${flag} VLESS | ")
     cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
 map \$uri \$sub_label {
-    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${flag} VLESS | \$label";
-    default                                                   "${flag} VLESS";
+    ~^/sub/(?<label>[A-Za-z0-9_-]+)_[A-Za-z0-9]+\\.txt\$  "${encoded_prefix}\$label";
+    default                                                   "${encoded_prefix}";
 }
 MAPEOF
 
