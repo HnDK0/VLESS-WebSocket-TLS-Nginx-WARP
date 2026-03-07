@@ -144,13 +144,13 @@ applyPsiphonDomains() {
     [ ! -f "$psiphonConfigFile" ] && { echo "${red}$(msg psiphon_not_setup)${reset}"; return 1; }
     [ ! -f "$psiphonDomainsFile" ] && touch "$psiphonDomainsFile"
     local domains_json
-    domains_json=$(domainsToJson "$psiphonDomainsFile")
+    domains_json=$(awk 'NF {printf "\"domain:%s\",", $1}' "$psiphonDomainsFile" | sed 's/,$//')
 
     applyPsiphonOutbound
 
     for cfg in "$configPath" "$realityConfigPath"; do
         [ -f "$cfg" ] || continue
-        jq --argjson doms "[$domains_json]" '(.routing.rules[] | select(.outboundTag == "psiphon")) |= (.domain = $doms | del(.port))' \
+        jq "(.routing.rules[] | select(.outboundTag == \"psiphon\")) |= (.domain = [$domains_json] | del(.port))" \
             "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
     done
     systemctl restart xray 2>/dev/null || true
@@ -276,16 +276,19 @@ managePsiphon() {
     set +e
     while true; do
         clear
-        echo -e "${cyan}$(msg psiphon_title)${reset}"
-        echo -e "$(msg status): $(getPsiphonStatus)"
-        echo ""
+        local s_psiphon s_country="" s_domains=""
+        s_psiphon=$(getPsiphonStatus)
+        [ -f "$psiphonConfigFile" ] && s_country=$(jq -r '.EgressRegion // ""' "$psiphonConfigFile" 2>/dev/null)
+        [ -f "$psiphonDomainsFile" ] && s_domains=$(wc -l < "$psiphonDomainsFile")
+        echo -e "${cyan}================================================================${reset}"
+        printf "   ${red}$(msg psiphon_title)${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  $(msg status): $s_psiphon"
         if [ -f "$psiphonConfigFile" ]; then
-            local country
-            country=$(jq -r '.EgressRegion // "Авто"' "$psiphonConfigFile" 2>/dev/null)
-            echo -e "  $(msg country): ${green}${country:-$(msg auto)}${reset}"
-            echo -e "  $(msg psiphon_socks5): 127.0.0.1:$PSIPHON_PORT"
-            [ -f "$psiphonDomainsFile" ] && echo -e "  $(msg domains_count): $(wc -l < "$psiphonDomainsFile")"
+            echo -e "  $(msg country): ${green}${s_country:-$(msg auto)}${reset}  │  SOCKS5: 127.0.0.1:$PSIPHON_PORT"
+            echo -e "  $(msg domains_count): ${green}${s_domains:-0}${reset}"
         fi
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo ""
         echo -e "${green}1.${reset} $(msg psiphon_install)"
         echo -e "${green}2.${reset} $(msg psiphon_mode)"

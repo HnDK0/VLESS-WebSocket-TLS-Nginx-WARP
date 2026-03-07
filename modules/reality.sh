@@ -360,8 +360,17 @@ manageReality() {
     set +e
     while true; do
         clear
-        echo -e "${cyan}$(msg reality_title)${reset}"
-        echo -e "$(msg status): $(getRealityStatus)"
+        local s_reality s_warp s_port s_dest
+        s_reality=$(getServiceStatus xray-reality)
+        s_warp=$(getWarpStatus)
+        s_port=$(jq -r '.inbounds[0].port // "—"' "$realityConfigPath" 2>/dev/null)
+        s_dest=$(jq -r '.inbounds[0].streamSettings.realitySettings.dest // "—"' "$realityConfigPath" 2>/dev/null)
+        echo -e "${cyan}================================================================${reset}"
+        printf "   ${red}VLESS + Reality${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  Xray:   $(_pad "$s_reality" 16) │  Порт: $(_pad "$s_port" 10) │  Dest: $s_dest"
+        echo -e "  WARP:   $s_warp"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo ""
         echo -e "${green}1.${reset} $(msg reality_install)"
         echo -e "${green}2.${reset} $(msg reality_qr)"

@@ -146,11 +146,11 @@ applyRelayDomains() {
     [ ! -f "$relayConfigFile" ] && { echo "${red}$(msg relay_not_configured)${reset}"; return 1; }
     [ ! -f "$relayDomainsFile" ] && touch "$relayDomainsFile"
     local domains_json
-    domains_json=$(domainsToJson "$relayDomainsFile")
+    domains_json=$(awk 'NF {printf "\"domain:%s\",", $1}' "$relayDomainsFile" | sed 's/,$//')
     applyRelayToConfigs || return 1
     for cfg in "$configPath" "$realityConfigPath"; do
         [ -f "$cfg" ] || continue
-        jq --argjson doms "[$domains_json]" '(.routing.rules[] | select(.outboundTag == "relay")) |= (.domain = $doms | del(.port))' \
+        jq "(.routing.rules[] | select(.outboundTag == \"relay\")) |= (.domain = [$domains_json] | del(.port))" \
             "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
     done
     systemctl restart xray 2>/dev/null || true
@@ -217,14 +217,19 @@ manageRelay() {
     set +e
     while true; do
         clear
-        echo -e "${cyan}$(msg relay_title)${reset}"
-        echo -e "$(msg status): $(getRelayStatus)"
-        echo ""
+        local s_relay s_domains=""
+        s_relay=$(getRelayStatus)
+        [ -f "$relayDomainsFile" ] && s_domains=$(wc -l < "$relayDomainsFile")
+        echo -e "${cyan}================================================================${reset}"
+        printf "   ${red}$(msg relay_title)${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  $(msg status): $s_relay"
         if [ -f "$relayConfigFile" ]; then
             source "$relayConfigFile"
             echo -e "  $(msg relay_server): ${green}$RELAY_PROTOCOL://$RELAY_HOST:$RELAY_PORT${reset}"
-            [ -f "$relayDomainsFile" ] && echo -e "  $(msg domains_count): $(wc -l < "$relayDomainsFile")"
+            echo -e "  $(msg domains_count): ${green}${s_domains:-0}${reset}"
         fi
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo ""
         echo -e "${green}1.${reset} $(msg relay_setup)"
         echo -e "${green}2.${reset} $(msg relay_mode)"

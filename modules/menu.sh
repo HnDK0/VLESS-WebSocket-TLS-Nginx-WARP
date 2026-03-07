@@ -170,21 +170,23 @@ manageWs() {
     set +e
     while true; do
         clear
-        local s_nginx s_ws s_ssl s_cfguard s_domain s_connect
+        local s_nginx s_ws s_ssl s_cfguard s_domain s_connect s_warp s_port s_path
         s_nginx=$(getServiceStatus nginx)
         s_ws=$(getServiceStatus xray)
         s_ssl=$(checkCertExpiry)
         s_cfguard=$(getCfGuardStatus)
+        s_warp=$(getWarpStatus)
         s_domain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // "—"' "$configPath" 2>/dev/null)
         s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
-        _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
+        s_port=$(jq -r '.inbounds[0].port // "—"' "$configPath" 2>/dev/null)
+        s_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // "—"' "$configPath" 2>/dev/null)
         echo -e "${cyan}================================================================${reset}"
-        echo -e "   $(msg menu_wspath)"
+        printf "   ${red}WebSocket + TLS + Nginx${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CF Guard: $(_pad "$s_cfguard" 10) │  SSL: $s_ssl"
-        echo -e "  Xray:   $(_pad "$s_ws" 16) │  $(msg status_domain):  $s_domain"
-        [ -n "$s_connect" ] && \
-        echo -e "  $(printf '%*s' 18 '') │  $(msg status_cdn_arrow) ${green}${s_connect}${reset}"
+        echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  SSL:      $(_pad "$s_ssl" 14) │  CF Guard: $s_cfguard"
+        echo -e "  Xray:   $(_pad "$s_ws" 16) │  Порт:     $(_pad "$s_port" 14) │  Путь: $s_path"
+        echo -e "  WARP:   $(_pad "$s_warp" 16) │  Домен:    $s_domain"
+        [ -n "$s_connect" ] &&         echo -e "  $(printf '%*s' 20 '') │  CDN:      ${green}${s_connect}${reset}"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  ${green}1.${reset}  $(msg menu_port)"
         echo -e "  ${green}2.${reset}  $(msg menu_wspath)"
@@ -231,7 +233,7 @@ menu() {
     # Первичная очистка экрана
     clear
     while true; do
-        local s_nginx s_ws s_reality s_warp s_ssl s_bbr s_f2b s_jail s_cfguard s_relay s_psiphon s_tor
+        local s_nginx s_ws s_reality s_warp s_ssl s_bbr s_f2b s_jail s_cfguard s_relay s_psiphon s_tor s_connect
         clear
         s_nginx=$(getServiceStatus nginx)
         s_ws=$(getServiceStatus xray)
@@ -245,26 +247,31 @@ menu() {
         s_relay=$(getRelayStatus)
         s_psiphon=$(getPsiphonStatus)
         s_tor=$(getTorStatus)
+        s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
 
         echo -e "${cyan}================================================================${reset}"
-        printf "   ${red}VWN — VLESS + WARP + CDN + REALITY${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
+        printf "   ${red}VWN — VLESS + WARP + REALITY${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}================================================================${reset}"
-        _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
-        echo -e "  Nginx:    $(_pad "$s_nginx" 16) │  BBR:     $(_pad "$s_bbr" 14) │  CF Guard: $s_cfguard"
-        echo -e "  WS:       $(_pad "$s_ws" 16) │  F2B:     $(_pad "$s_f2b" 14) │  Relay:   $s_relay"
-        echo -e "  Reality:  $(_pad "$s_reality" 16) │  SSL:     $(_pad "$s_ssl" 14) │  Psiphon: $s_psiphon"
-        echo -e "  WARP:     $(_pad "$s_warp" 16) │  Jail:    $(_pad "$s_jail" 14) │  Tor:     $s_tor"
+        echo -e "  ${cyan}── $(msg menu_sep_proto_short) ───────────────────────────────────────────${reset}"
+        echo -e "  WS:       $(_pad "$s_ws" 16) │  WARP: $(_pad "$s_warp" 22) │  SSL: $s_ssl"
+        echo -e "  Reality:  $(_pad "$s_reality" 16) │  CDN:  $(_pad "$s_connect" 22) │  CF Guard: $s_cfguard"
+        echo -e "  Nginx:    $(_pad "$s_nginx" 16) │"
+        echo -e "  ${cyan}── $(msg menu_sep_tun_short) ────────────────────────────────────────────${reset}"
+        echo -e "  Relay: $(_pad "$s_relay" 19) │  Psiphon: $(_pad "$s_psiphon" 18) │  Tor: $s_tor"
+        echo -e "  ${cyan}── $(msg menu_sep_sec_short) ─────────────────────────────────────────────${reset}"
+        echo -e "  BBR: $(_pad "$s_bbr" 10) │  F2B: $(_pad "$s_f2b" 10) │  Jail: $s_jail"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
 
         echo -e "  ${green}1.${reset}  $(msg menu_install)"
         echo -e "  ${green}2.${reset}  $(msg menu_users)"
-        echo -e "  $(msg menu_sep_tun)"
+        echo -e "  $(msg menu_sep_proto)"
         echo -e "  ${green}3.${reset}  $(msg menu_ws)"
         echo -e "  ${green}4.${reset}  $(msg menu_reality)"
+        echo -e "  $(msg menu_sep_tun)"
         echo -e "  ${green}5.${reset}  $(msg menu_relay)"
         echo -e "  ${green}6.${reset}  $(msg menu_psiphon)"
         echo -e "  ${green}7.${reset}  $(msg menu_tor)"
-        echo -e "  $(msg menu_sep_cdn)"
+        echo -e "  $(msg menu_sep_warp)"
         echo -e "  ${green}8.${reset}  $(msg menu_warp_mode)"
         echo -e "  ${green}9.${reset}  $(msg menu_warp_add)"
         echo -e "  ${green}10.${reset} $(msg menu_warp_del)"

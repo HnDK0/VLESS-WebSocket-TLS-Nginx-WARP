@@ -17,8 +17,8 @@ selectLang() {
     echo "┌─────────────────────────────────┐"
     echo "│   Select language / Выберите язык│"
     echo "├─────────────────────────────────┤"
-    echo "│   1) 🇷🇺  Русский                │"
-    echo "│   2) 🇬🇧  English                │"
+    echo "│   1) [RU]  Русский               │"
+    echo "│   2) [EN]  English               │"
     echo "└─────────────────────────────────┘"
     read -rp "Choice / Выбор [1]: " _lang_choice
     case "${_lang_choice:-1}" in
@@ -104,7 +104,10 @@ _initLang() {
     MSG[menu_ssl]=$(          [ "$VWN_LANG" = en ] && echo "Reissue SSL certificate"   || echo "Перевыпустить SSL сертификат")
     MSG[menu_domain]=$(       [ "$VWN_LANG" = en ] && echo "Change domain"             || echo "Сменить домен")
 	MSG[menu_cdn_host]=$(         [ "$VWN_LANG" = en ] && echo "Connection Address (CDN Domain)"          || echo "Адрес подключения (CDN домен)")
-    MSG[menu_sep_cdn]=$(      [ "$VWN_LANG" = en ] && echo "─── CDN & WARP ──────────────────────" || echo "─────────────── CDN и WARP ───────────────")
+    MSG[menu_sep_warp]=$(     [ "$VWN_LANG" = en ] && echo "─── WARP ────────────────────────────" || echo "─────────────────── WARP ─────────────────")
+    MSG[menu_sep_proto_short]=$(  [ "$VWN_LANG" = en ] && echo "Protocols" || echo "Протоколы")
+    MSG[menu_sep_tun_short]=$(    [ "$VWN_LANG" = en ] && echo "Tunnels"   || echo "Туннели")
+    MSG[menu_sep_sec_short]=$(    [ "$VWN_LANG" = en ] && echo "Security"  || echo "Безопасность")
     MSG[menu_cfguard]=$(      [ "$VWN_LANG" = en ] && echo "Cloudflare-only access (block direct)" || echo "CF Guard — только Cloudflare IP (блок прямого доступа)")
     MSG[menu_warp_mode]=$(    [ "$VWN_LANG" = en ] && echo "Toggle WARP mode (Global/Split/OFF)" || echo "Переключить режим WARP (Global/Split/OFF)")
     MSG[menu_warp_add]=$(     [ "$VWN_LANG" = en ] && echo "Add domain to WARP"        || echo "Добавить домен в WARP")
@@ -131,6 +134,7 @@ _initLang() {
     MSG[menu_ufw]=$(          [ "$VWN_LANG" = en ] && echo "Manage UFW"                || echo "Управление UFW")
     MSG[menu_ssl_cron]=$(     [ "$VWN_LANG" = en ] && echo "Manage SSL auto-renewal"   || echo "Управление автообновлением SSL")
     MSG[menu_log_cron]=$(     [ "$VWN_LANG" = en ] && echo "Manage log auto-clear"     || echo "Управление автоочисткой логов")
+    MSG[menu_sep_proto]=$(    [ "$VWN_LANG" = en ] && echo "─── Protocols ───────────────────────" || echo "─────────────── Протоколы ────────────────")
     MSG[menu_sep_tun]=$(      [ "$VWN_LANG" = en ] && echo "─── Tunnels ─────────────────────────" || echo "─────────────── Туннели ──────────────────")
     MSG[menu_ws]=$(           [ "$VWN_LANG" = en ] && echo "Manage WS + CDN"    || echo "Управление WS + CDN")
     MSG[menu_reality]=$(      [ "$VWN_LANG" = en ] && echo "Manage VLESS + Reality"    || echo "Управление VLESS + Reality")

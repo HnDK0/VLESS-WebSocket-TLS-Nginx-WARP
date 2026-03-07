@@ -363,18 +363,22 @@ manageTor() {
     set +e
     while true; do
         clear
-        echo -e "${cyan}$(msg tor_title)${reset}"
-        echo -e "$(msg status): $(getTorStatus)"
-        echo ""
+        local s_tor s_country="$(msg auto)" s_bridges="" s_domains=""
+        s_tor=$(getTorStatus)
         if command -v tor &>/dev/null; then
-            local country="Авто"
-            grep -q "^ExitNodes" "$TOR_CONFIG" 2>/dev/null && \
-                country=$(grep "^ExitNodes" "$TOR_CONFIG" | grep -oP '\{[A-Z]+\}' | tr -d '{}' | head -1)
-            echo -e "  $(msg country): ${green}${country}${reset}"
-            echo -e "  $(msg tor_bridges_status): $(getTorBridgeStatus)"
-            echo -e "  $(msg tor_socks5): 127.0.0.1:$TOR_PORT"
-            [ -f "$torDomainsFile" ] && echo -e "  $(msg domains_count): $(wc -l < "$torDomainsFile")"
+            grep -q "^ExitNodes" "$TOR_CONFIG" 2>/dev/null &&                 s_country=$(grep "^ExitNodes" "$TOR_CONFIG" | grep -oP '\{[A-Z]+\}' | tr -d '{}' | head -1)
+            s_bridges=$(getTorBridgeStatus)
+            [ -f "$torDomainsFile" ] && s_domains=$(wc -l < "$torDomainsFile")
         fi
+        echo -e "${cyan}================================================================${reset}"
+        printf "   ${red}$(msg tor_title)${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  $(msg status): $s_tor"
+        if command -v tor &>/dev/null; then
+            echo -e "  $(msg country): ${green}${s_country}${reset}  │  Bridges: ${s_bridges}  │  SOCKS5: 127.0.0.1:$TOR_PORT"
+            echo -e "  $(msg domains_count): ${green}${s_domains:-0}${reset}"
+        fi
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo ""
         echo -e "${green}1.${reset} $(msg tor_install)"
         echo -e "${green}2.${reset} $(msg tor_mode)"

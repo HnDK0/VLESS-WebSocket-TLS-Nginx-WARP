@@ -250,45 +250,21 @@ checkCertExpiry() {
         expire_epoch=$(date -d "$expire_date" +%s)
         now_epoch=$(date +%s)
         days_left=$(( (expire_epoch - now_epoch) / 86400 ))
-        if   [ "$days_left" -le 0  ]; then echo "${red}SSL: EXPIRED!${reset}"
-        elif [ "$days_left" -lt 15 ]; then echo "${red}SSL: $days_left d${reset}"
-        else echo "${green}SSL: OK ($days_left d)${reset}"; fi
+        if   [ "$days_left" -le 0  ]; then echo "${red}EXPIRED!${reset}"
+        elif [ "$days_left" -lt 15 ]; then echo "${red}${days_left}d${reset}"
+        else echo "${green}OK (${days_left}d)${reset}"; fi
     else
-        echo "${red}SSL: MISSING${reset}"
+        echo "${red}MISSING${reset}"
     fi
 }
 
 # ============================================================
-# УТИЛИТА: нормализация доменов → JSON-массив для Xray routing
-# Использование: domainsToJson /path/to/domains.txt
-# - убирает префикс domain:
-# - убирает ведущую точку (.ru → ru)
-# - конвертирует IDN/кириллику в punycode (xn--)
-# Возвращает строку вида: "domain:foo","domain:bar"
+# УТИЛИТА: выравнивание текста по ширине колонки
+# Использование: _pad "строка" ширина
+# Корректно работает со строками содержащими ANSI escape коды
 # ============================================================
-domainsToJson() {
-    local file="$1"
-    [ ! -f "$file" ] && echo "" && return
-    awk 'NF {
-        gsub(/^domain:/, "", $1)
-        gsub(/^\./, "", $1)
-        print $1
-    }' "$file" | python3 -c "
-import sys
-result = []
-for line in sys.stdin:
-    d = line.strip()
-    if not d:
-        continue
-    try:
-        parts = d.split('.')
-        encoded = '.'.join(
-            p.encode('idna').decode('ascii') if p else p
-            for p in parts
-        )
-        result.append('\"domain:' + encoded + '\"')
-    except Exception:
-        result.append('\"domain:' + d + '\"')
-print(','.join(result))
-" | tr -d '\n'
+_pad() {
+    local v="$1" w="$2" vis
+    vis=$(printf '%s' "$v" | sed $'s/\033\\[[0-9;]*m//g')
+    printf "%s%*s" "$v" $((w - ${#vis})) ""
 }
