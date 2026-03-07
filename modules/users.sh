@@ -244,7 +244,7 @@ showUserQR() {
 
     # WebSocket
     if [ -f "$configPath" ] && [ -n "$domain" ]; then
-        local wp wep url_ws json outfile server_ip flag name encoded_name
+        local wp wep url_ws server_ip flag name encoded_name
         wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
         wep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))" "$wp" 2>/dev/null || echo "$wp")
         server_ip=$(getServerIP)
@@ -261,15 +261,7 @@ showUserQR() {
         qrencode -s 1 -m 1 -t ANSIUTF8 "$url_ws" 2>/dev/null || true
         echo -e "\n${green}${url_ws}${reset}\n"
 
-        json=$(_getWsJsonConfig "$uuid" "$domain" "$wp")
-        outfile="/root/vwn-client-${label}.json"
-        echo -e "${cyan}[ 2. JSON конфиг — v2rayNG: + → Custom config ]${reset}"
-        echo -e "${yellow}${json}${reset}"
-        echo "$json" > "$outfile"
-        echo -e "\n  ${green}Сохранён: $outfile${reset}"
-        echo -e "  Импорт файла: v2rayNG → ☰ → Import config from file\n"
-
-        echo -e "${cyan}[ 3. Clash Meta / Mihomo ]${reset}"
+        echo -e "${cyan}[ 2. Clash Meta / Mihomo ]${reset}"
         echo -e "${yellow}- name: ${name}
   type: vless
   server: ${domain}

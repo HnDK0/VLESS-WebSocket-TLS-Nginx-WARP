@@ -234,15 +234,7 @@ getQrCode() {
         qrencode -s 1 -m 1 -t ANSIUTF8 "$url" 2>/dev/null || true
         echo -e "\n${green}${url}${reset}\n"
 
-        local json outfile="/root/vwn-client-ws.json"
-        json=$(_getWsJsonConfig "$xray_uuid" "$xray_userDomain" "$xray_path")
-        echo -e "${cyan}[ 2. JSON конфиг — v2rayNG: + → Custom config ]${reset}"
-        echo -e "${yellow}${json}${reset}"
-        echo "$json" > "$outfile"
-        echo -e "\n  ${green}Сохранён: $outfile${reset}"
-        echo -e "  Импорт файла: v2rayNG → ☰ → Import config from file\n"
-
-        echo -e "${cyan}[ 3. Clash Meta / Mihomo ]${reset}"
+        echo -e "${cyan}[ 2. Clash Meta / Mihomo ]${reset}"
         echo -e "${yellow}- name: ${name}
   type: vless
   server: ${xray_userDomain}
