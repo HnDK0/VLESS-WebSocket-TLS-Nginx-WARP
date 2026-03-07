@@ -319,7 +319,7 @@ modifyXrayPort() {
     echo "${green}$(msg port_changed) $xrayPort${reset}"
 }
 
-modifyXhttpPath() {
+modifyWsPath() {
     local oldPath
     oldPath=$(jq -r ".inbounds[0].streamSettings.wsSettings.path" "$configPath")
     read -rp "$(msg enter_new_path)" wsPath

@@ -256,7 +256,7 @@ showRealityInfo() {
     port=$(jq -r '.inbounds[0].port' "$realityConfigPath")
     shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath")
     destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath")
-    pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
+    pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $NF}')
     serverIP=$(_getPublicIP)
 
     echo "--------------------------------------------------"
@@ -268,22 +268,7 @@ showRealityInfo() {
     echo "ServerName:  $destHost"
     echo "Flow:        xtls-rprx-vision"
     echo "--------------------------------------------------"
-    local url flag name encoded_name
-    serverIP=$(_getPublicIP)
-    flag=$(_getCountryFlag "$serverIP")
-    name="${flag} VL-Reality | default ${flag}"
-    encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
-
-    echo "--------------------------------------------------"
-    echo "UUID:        $uuid"
-    echo "IP:          $serverIP"
-    echo "$(msg reality_port): $port"
-    echo "PublicKey:   $pubKey"
-    echo "ShortId:     $shortId"
-    echo "ServerName:  $destHost"
-    echo "Flow:        xtls-rprx-vision"
-    echo "--------------------------------------------------"
-    url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#${encoded_name}"
+    local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#Reality-${serverIP}"
     echo -e "${green}$url${reset}"
     echo "--------------------------------------------------"
 }
@@ -291,21 +276,17 @@ showRealityInfo() {
 showRealityQR() {
     [ ! -f "$realityConfigPath" ] && { echo "${red}$(msg reality_not_installed)${reset}"; return 1; }
 
-    local uuid port shortId destHost pubKey serverIP flag name encoded_name
+    local uuid port shortId destHost pubKey serverIP
     uuid=$(jq -r '.inbounds[0].settings.clients[0].id' "$realityConfigPath")
     port=$(jq -r '.inbounds[0].port' "$realityConfigPath")
     shortId=$(jq -r '.inbounds[0].streamSettings.realitySettings.shortIds[0]' "$realityConfigPath")
     destHost=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0]' "$realityConfigPath")
-    pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $2}')
+    pubKey=$(grep "PublicKey:" /usr/local/etc/xray/reality_client.txt 2>/dev/null | awk '{print $NF}')
     serverIP=$(_getPublicIP)
-    flag=$(_getCountryFlag "$serverIP")
-    name="${flag} VL-Reality | default ${flag}"
-    encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
 
-    local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#${encoded_name}"
+    local url="vless://${uuid}@${serverIP}:${port}?encryption=none&security=reality&sni=${destHost}&fp=chrome&pbk=${pubKey}&sid=${shortId}&type=tcp&flow=xtls-rprx-vision#Reality-${serverIP}"
     command -v qrencode &>/dev/null || installPackage "qrencode"
-    echo -e "${cyan}=== ${name} ===${reset}"
-    qrencode -s 1 -m 1 -t ANSIUTF8 "$url"
+    qrencode -t ANSI "$url"
     echo -e "\n${green}$url${reset}\n"
 }
 
@@ -378,8 +359,14 @@ manageReality() {
     set +e
     while true; do
         clear
+        local r_status r_port r_sni r_info
+        r_status=$(getRealityStatus)
+        r_port=$(jq -r '.inbounds[0].port // "—"' "$realityConfigPath" 2>/dev/null)
+        r_sni=$(jq -r '.inbounds[0].streamSettings.realitySettings.serverNames[0] // "—"' "$realityConfigPath" 2>/dev/null)
+        r_info="${r_status}"
+        [ -f "$realityConfigPath" ] && r_info="${r_status} (порт ${r_port}) │ SNI: ${r_sni}"
         echo -e "${cyan}$(msg reality_title)${reset}"
-        echo -e "$(msg status): $(getRealityStatus)"
+        echo -e "$(msg status): ${r_info}"
         echo ""
         echo -e "${green}1.${reset} $(msg reality_install)"
         echo -e "${green}2.${reset} $(msg reality_qr)"

@@ -123,7 +123,8 @@ server {
     location /sub/ {
         alias /usr/local/etc/xray/sub/;
         default_type text/plain;
-        add_header Content-Disposition 'attachment; filename="sub.txt"';
+        add_header Content-Disposition 'attachment; filename="${sub_label}.txt"';
+        add_header profile-title "${sub_label}";
         add_header Cache-Control 'no-cache, no-store, must-revalidate';
     }
 
@@ -142,6 +143,17 @@ server {
     error_log  /var/log/nginx/error.log;
 }
 EOF
+
+    # Генерируем map-блок для красивых имён файлов подписки
+    local server_ip flag
+    server_ip=$(getServerIP 2>/dev/null || curl -s --connect-timeout 5 ifconfig.me)
+    flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
+    cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
+map \$uri \$sub_label {
+    ~*/sub/(?<label>[^_/]+)_  "${flag} VLESS | \$label";
+    default                    "${flag} VLESS";
+}
+MAPEOF
 }
 
 setupCloudflareIPs() {
@@ -286,12 +298,24 @@ configCert() {
     echo "${green}$(msg ssl_success) $userDomain${reset}"
 }
 
-# Добавляет location /sub/ в существующий xray.conf без полной пересборки
+# Добавляет location /sub/ и обновляет sub_map.conf с флагом страны
 applyNginxSub() {
     [ ! -f "$nginxPath" ] && return 1
-    grep -q 'location /sub/' "$nginxPath" && return 0
 
-    python3 - "$nginxPath" << 'PYEOF'
+    # Обновляем/создаём sub_map.conf с актуальным флагом
+    local server_ip flag
+    server_ip=$(getServerIP 2>/dev/null || curl -s --connect-timeout 5 ifconfig.me)
+    flag=$(_getCountryFlag "$server_ip" 2>/dev/null || echo "🌐")
+    cat > /etc/nginx/conf.d/sub_map.conf << MAPEOF
+map \$uri \$sub_label {
+    ~*/sub/(?<label>[^_/]+)_  "${flag} VLESS | \$label";
+    default                    "${flag} VLESS";
+}
+MAPEOF
+
+    # Добавляем location /sub/ в xray.conf если его ещё нет
+    if ! grep -q 'location /sub/' "$nginxPath"; then
+        python3 - "$nginxPath" << 'PYEOF'
 import sys, re
 path = sys.argv[1]
 with open(path) as f: c = f.read()
@@ -299,13 +323,15 @@ block = (
     "\n    location /sub/ {\n"
     "        alias /usr/local/etc/xray/sub/;\n"
     "        default_type text/plain;\n"
-    '        add_header Content-Disposition \'attachment; filename="sub.txt"\';\n'
+    '        add_header Content-Disposition \'attachment; filename="${sub_label}.txt"\';\n'
+    '        add_header profile-title "${sub_label}";\n'
     "        add_header Cache-Control 'no-cache, no-store, must-revalidate';\n"
     "    }\n"
 )
 c = re.sub(r'(\n    location / \{)', block + r'\1', c, count=1)
 with open(path, 'w') as f: f.write(c)
 PYEOF
+    fi
 
     nginx -t && systemctl reload nginx
 }

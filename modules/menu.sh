@@ -178,7 +178,7 @@ manageWs() {
         s_domain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // "—"' "$configPath" 2>/dev/null)
         _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
         echo -e "${cyan}================================================================${reset}"
-        echo -e "   WS + CDN"
+        echo -e "   Управление WS + CDN"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CDN:  $(_pad "$s_cdn" 14) │  SSL: $s_ssl"
         echo -e "  Xray:   $(_pad "$s_ws" 16) │  Домен: $s_domain"
@@ -192,16 +192,17 @@ manageWs() {
         echo -e "  ${green}7.${reset}  $(msg menu_cf_update_ip)"
         echo -e "  ${green}8.${reset}  $(msg menu_ssl_cron)"
         echo -e "  ${green}9.${reset}  $(msg menu_log_cron)"
+        echo -e "  ${green}10.${reset} $(msg menu_uuid)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  ${green}10.${reset} $(msg menu_install)"
-        echo -e "  ${green}11.${reset} $(msg menu_remove)"
+        echo -e "  ${green}11.${reset} $(msg menu_install)"
+        echo -e "  ${green}12.${reset} $(msg menu_remove)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  ${green}0.${reset}  $(msg back)"
         echo -e "${cyan}================================================================${reset}"
         read -rp "$(msg choose)" choice
         case $choice in
             1)  modifyXrayPort ;;
-            2)  modifyXhttpPath ;;
+            2)  modifyWsPath ;;
             3)  modifyDomain ;;
             4)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
             5)  modifyProxyPassUrl ;;
@@ -209,8 +210,9 @@ manageWs() {
             7)  setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
             8)  manageSslCron ;;
             9)  manageLogClearCron ;;
-            10) install ;;
-            11) removeWs ;;
+            10) modifyXrayUUID ;;
+            11) install ;;
+            12) removeWs ;;
             0)  break ;;
         esac
         [ "$choice" = "0" ] && continue
@@ -279,11 +281,10 @@ menu() {
         echo -e "  $(msg menu_sep_svc)"
         echo -e "  ${green}24.${reset} $(msg menu_restart)"
         echo -e "  ${green}25.${reset} $(msg menu_update_xray)"
-        echo -e "  ${green}26.${reset} $(msg menu_uuid)"
-        echo -e "  ${green}27.${reset} $(msg menu_diag)"
-        echo -e "  ${green}28.${reset} $(msg menu_backup)"
-        echo -e "  ${green}29.${reset} $(msg menu_lang)"
-        echo -e "  ${green}30.${reset} $(msg menu_remove)"
+        echo -e "  ${green}26.${reset} $(msg menu_diag)"
+        echo -e "  ${green}27.${reset} $(msg menu_backup)"
+        echo -e "  ${green}28.${reset} $(msg menu_lang)"
+        echo -e "  ${green}29.${reset} $(msg menu_remove)"
         echo -e "  $(msg menu_sep_exit)"
         echo -e "  ${green}0.${reset}  $(msg menu_exit)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
@@ -316,11 +317,10 @@ menu() {
             24) systemctl restart xray xray-reality nginx warp-svc psiphon tor 2>/dev/null || true
                 echo "${green}$(msg all_services_restarted)${reset}" ;;
             25) updateXrayCore ;;
-            26) modifyXrayUUID ;;
-            27) manageDiag ;;
-            28) manageBackup ;;
-            29) selectLang; _initLang ;;
-            30) fullRemove ;;
+            26) manageDiag ;;
+            27) manageBackup ;;
+            28) selectLang; _initLang ;;
+            29) fullRemove ;;
             0)  exit 0 ;;
             *)  echo -e "${red}$(msg invalid)${reset}"; sleep 1 ;;
         esac
