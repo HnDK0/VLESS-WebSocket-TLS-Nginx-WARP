@@ -149,6 +149,76 @@ fullRemove() {
     fi
 }
 
+removeWs() {
+    echo -e "${red}$(msg remove_confirm) $(msg yes_no)${reset}"
+    read -r confirm
+    [[ "$confirm" != "y" ]] && return 0
+    systemctl stop nginx xray 2>/dev/null || true
+    systemctl disable nginx xray 2>/dev/null || true
+    [ -z "${PACKAGE_MANAGEMENT_REMOVE:-}" ] && identifyOS
+    uninstallPackage 'nginx*' || true
+    bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
+    rm -rf /etc/nginx /usr/local/etc/xray/config.json \
+           /usr/local/etc/xray/sub /usr/local/etc/xray/users.conf \
+           /etc/cron.d/acme-renew /etc/cron.d/clear-logs \
+           /usr/local/bin/clear-logs.sh /etc/sysctl.d/99-xray.conf
+    systemctl daemon-reload
+    echo "${green}$(msg remove_done)${reset}"
+}
+
+manageWs() {
+    set +e
+    while true; do
+        clear
+        local s_nginx s_ws s_ssl s_cdn s_domain
+        s_nginx=$(getServiceStatus nginx)
+        s_ws=$(getServiceStatus xray)
+        s_ssl=$(checkCertExpiry)
+        s_cdn=$(getCdnStatus)
+        s_domain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // "—"' "$configPath" 2>/dev/null)
+        _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
+        echo -e "${cyan}================================================================${reset}"
+        echo -e "   WS + CDN"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  Nginx:  $(_pad "$s_nginx" 16) │  CDN:  $(_pad "$s_cdn" 14) │  SSL: $s_ssl"
+        echo -e "  Xray:   $(_pad "$s_ws" 16) │  Домен: $s_domain"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  ${green}1.${reset}  $(msg menu_port)"
+        echo -e "  ${green}2.${reset}  $(msg menu_wspath)"
+        echo -e "  ${green}3.${reset}  $(msg menu_domain)"
+        echo -e "  ${green}4.${reset}  $(msg menu_ssl)"
+        echo -e "  ${green}5.${reset}  $(msg menu_stub)"
+        echo -e "  ${green}6.${reset}  $(msg menu_cdn)"
+        echo -e "  ${green}7.${reset}  $(msg menu_cf_update_ip)"
+        echo -e "  ${green}8.${reset}  $(msg menu_ssl_cron)"
+        echo -e "  ${green}9.${reset}  $(msg menu_log_cron)"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  ${green}10.${reset} $(msg menu_install)"
+        echo -e "  ${green}11.${reset} $(msg menu_remove)"
+        echo -e "${cyan}----------------------------------------------------------------${reset}"
+        echo -e "  ${green}0.${reset}  $(msg back)"
+        echo -e "${cyan}================================================================${reset}"
+        read -rp "$(msg choose)" choice
+        case $choice in
+            1)  modifyXrayPort ;;
+            2)  modifyXhttpPath ;;
+            3)  modifyDomain ;;
+            4)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
+            5)  modifyProxyPassUrl ;;
+            6)  toggleCdnMode ;;
+            7)  setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
+            8)  manageSslCron ;;
+            9)  manageLogClearCron ;;
+            10) install ;;
+            11) removeWs ;;
+            0)  break ;;
+        esac
+        [ "$choice" = "0" ] && continue
+        echo -e "\n${cyan}$(msg press_enter)${reset}"
+        read -r
+    done
+}
+
 menu() {
     set +e
     # Первичная очистка экрана
@@ -174,33 +244,32 @@ menu() {
         echo -e "${cyan}================================================================${reset}"
         _pad() { local v="$1" w="$2" vis; vis=$(echo "$v" | sed 's/\x1b\[[0-9;]*m//g'); printf "%s%*s" "$v" $((w - ${#vis})) ""; }
         echo -e "  Nginx:    $(_pad "$s_nginx" 16) │  BBR:     $(_pad "$s_bbr" 14) │  CDN:     $s_cdn"
-        echo -e "  XHTTP:    $(_pad "$s_ws" 16) │  F2B:     $(_pad "$s_f2b" 14) │  Relay:   $s_relay"
+        echo -e "  WS:       $(_pad "$s_ws" 16) │  F2B:     $(_pad "$s_f2b" 14) │  Relay:   $s_relay"
         echo -e "  Reality:  $(_pad "$s_reality" 16) │  SSL:     $(_pad "$s_ssl" 14) │  Psiphon: $s_psiphon"
         echo -e "  WARP:     $(_pad "$s_warp" 16) │  Jail:    $(_pad "$s_jail" 14) │  Tor:     $s_tor"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
 
         echo -e "  ${green}1.${reset}  $(msg menu_install)"
-        echo -e "  ${green}2.${reset}  $(msg menu_qr)"
-        echo -e "  ${green}3.${reset}  $(msg menu_uuid)"
-        echo -e "  $(msg menu_sep_config)"
-        echo -e "  ${green}4.${reset}  $(msg menu_port)"
-        echo -e "  ${green}5.${reset}  $(msg menu_wspath)"
-        echo -e "  ${green}6.${reset}  $(msg menu_stub)"
-        echo -e "  ${green}7.${reset}  $(msg menu_ssl)"
-        echo -e "  ${green}8.${reset}  $(msg menu_domain)"
+        echo -e "  ${green}2.${reset}  $(msg menu_users)"
+        echo -e "  $(msg menu_sep_tun)"
+        echo -e "  ${green}3.${reset}  WS + CDN"
+        echo -e "  ${green}4.${reset}  $(msg menu_reality)"
+        echo -e "  ${green}5.${reset}  $(msg menu_relay)"
+        echo -e "  ${green}6.${reset}  $(msg menu_psiphon)"
+        echo -e "  ${green}7.${reset}  $(msg menu_tor)"
         echo -e "  $(msg menu_sep_cdn)"
-        echo -e "  ${green}9.${reset}  $(msg menu_cdn)"
-        echo -e "  ${green}10.${reset} $(msg menu_warp_mode)"
-        echo -e "  ${green}11.${reset} $(msg menu_warp_add)"
-        echo -e "  ${green}12.${reset} $(msg menu_warp_del)"
-        echo -e "  ${green}13.${reset} $(msg menu_warp_edit)"
-        echo -e "  ${green}14.${reset} $(msg menu_warp_check)"
+        echo -e "  ${green}8.${reset}  $(msg menu_warp_mode)"
+        echo -e "  ${green}9.${reset}  $(msg menu_warp_add)"
+        echo -e "  ${green}10.${reset} $(msg menu_warp_del)"
+        echo -e "  ${green}11.${reset} $(msg menu_warp_edit)"
+        echo -e "  ${green}12.${reset} $(msg menu_warp_check)"
+        echo -e "  ${green}13.${reset} $(msg menu_watchdog)"
         echo -e "  $(msg menu_sep_sec)"
-        echo -e "  ${green}15.${reset} $(msg menu_bbr)"
-        echo -e "  ${green}16.${reset} $(msg menu_f2b)"
-        echo -e "  ${green}17.${reset} $(msg menu_jail)"
-        echo -e "  ${green}18.${reset} $(msg menu_ssh)"
-        echo -e "  ${green}30.${reset} $(msg menu_watchdog)"
+        echo -e "  ${green}14.${reset} $(msg menu_bbr)"
+        echo -e "  ${green}15.${reset} $(msg menu_f2b)"
+        echo -e "  ${green}16.${reset} $(msg menu_jail)"
+        echo -e "  ${green}17.${reset} $(msg menu_ssh)"
+        echo -e "  ${green}18.${reset} $(msg menu_ufw)"
         echo -e "  $(msg menu_sep_logs)"
         echo -e "  ${green}19.${reset} $(msg menu_xray_acc)"
         echo -e "  ${green}20.${reset} $(msg menu_xray_err)"
@@ -210,23 +279,11 @@ menu() {
         echo -e "  $(msg menu_sep_svc)"
         echo -e "  ${green}24.${reset} $(msg menu_restart)"
         echo -e "  ${green}25.${reset} $(msg menu_update_xray)"
-        echo -e "  ${green}26.${reset} $(msg menu_remove)"
-        echo -e "  $(msg menu_sep_ufw)"
-        echo -e "  ${green}27.${reset} $(msg menu_ufw)"
-        echo -e "  ${green}28.${reset} $(msg menu_ssl_cron)"
-        echo -e "  ${green}29.${reset} $(msg menu_log_cron)"
-        echo -e "  $(msg menu_sep_tun)"
-        echo -e "  ${green}31.${reset} $(msg menu_reality)"
-        echo -e "  ${green}32.${reset} $(msg menu_relay)"
-        echo -e "  ${green}33.${reset} $(msg menu_psiphon)"
-        echo -e "  ${green}34.${reset} $(msg menu_tor)"
-        echo -e "  ${green}35.${reset} $(msg menu_lang)"
-        echo -e "  $(msg menu_sep_tools)"
-        echo -e "  ${green}36.${reset} $(msg menu_diag)"
-        echo -e "  ${green}37.${reset} $(msg menu_users)"
-        echo -e "  ${green}38.${reset} $(msg menu_backup)"
-        echo -e "  ${green}39.${reset} $(msg menu_cf_update_ip)"
-        echo -e "  ${green}40.${reset} $(msg menu_sub)"
+        echo -e "  ${green}26.${reset} $(msg menu_uuid)"
+        echo -e "  ${green}27.${reset} $(msg menu_diag)"
+        echo -e "  ${green}28.${reset} $(msg menu_backup)"
+        echo -e "  ${green}29.${reset} $(msg menu_lang)"
+        echo -e "  ${green}30.${reset} $(msg menu_remove)"
         echo -e "  $(msg menu_sep_exit)"
         echo -e "  ${green}0.${reset}  $(msg menu_exit)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
@@ -234,25 +291,23 @@ menu() {
         read -rp "$(msg choose)" num
         case $num in
             1)  install ;;
-            2)  getQrCode ;;
-            3)  modifyXrayUUID ;;
-            4)  modifyXrayPort ;;
-            5)  modifyXhttpPath ;;
-            6)  modifyProxyPassUrl ;;
-            7)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
-            8)  modifyDomain ;;
-            9)  toggleCdnMode ;;
-            39) setupCloudflareIPs && nginx -t && systemctl reload nginx ;;
-            40) rebuildAllSubFiles ;;
-            10) toggleWarpMode ;;
-            11) addDomainToWarpProxy ;;
-            12) deleteDomainFromWarpProxy ;;
-            13) nano "$warpDomainsFile" && applyWarpDomains ;;
-            14) checkWarpStatus ;;
-            15) enableBBR ;;
-            16) setupFail2Ban ;;
-            17) setupWebJail ;;
-            18) changeSshPort ;;
+            2)  manageUsers ;;
+            3)  manageWs ;;
+            4)  manageReality ;;
+            5)  manageRelay ;;
+            6)  managePsiphon ;;
+            7)  manageTor ;;
+            8)  toggleWarpMode ;;
+            9)  addDomainToWarpProxy ;;
+            10) deleteDomainFromWarpProxy ;;
+            11) nano "$warpDomainsFile" && applyWarpDomains ;;
+            12) checkWarpStatus ;;
+            13) setupWarpWatchdog ;;
+            14) enableBBR ;;
+            15) setupFail2Ban ;;
+            16) setupWebJail ;;
+            17) changeSshPort ;;
+            18) manageUFW ;;
             19) tail -n 80 /var/log/xray/access.log 2>/dev/null || echo "$(msg no_logs)" ;;
             20) tail -n 80 /var/log/xray/error.log 2>/dev/null || echo "$(msg no_logs)" ;;
             21) tail -n 80 /var/log/nginx/access.log 2>/dev/null || echo "$(msg no_logs)" ;;
@@ -261,19 +316,11 @@ menu() {
             24) systemctl restart xray xray-reality nginx warp-svc psiphon tor 2>/dev/null || true
                 echo "${green}$(msg all_services_restarted)${reset}" ;;
             25) updateXrayCore ;;
-            26) fullRemove ;;
-            27) manageUFW ;;
-            28) manageSslCron ;;
-            29) manageLogClearCron ;;
-            30) setupWarpWatchdog ;;
-            31) manageReality ;;
-            32) manageRelay ;;
-            33) managePsiphon ;;
-            34) manageTor ;;
-            35) selectLang; _initLang ;;
-            36) manageDiag ;;
-            37) manageUsers ;;
-            38) manageBackup ;;
+            26) modifyXrayUUID ;;
+            27) manageDiag ;;
+            28) manageBackup ;;
+            29) selectLang; _initLang ;;
+            30) fullRemove ;;
             0)  exit 0 ;;
             *)  echo -e "${red}$(msg invalid)${reset}"; sleep 1 ;;
         esac

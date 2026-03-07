@@ -18,11 +18,11 @@ _genToken()    { head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12; }
 _safeLabel()   { echo "$1" | tr -cd 'A-Za-z0-9_-'; }
 _subFilename() { echo "$(_safeLabel "$1")_${2}.txt"; }
 
-# Домен из xhttpSettings.host (единственный источник)
+# Домен из wsSettings.host (с fallback на xhttpSettings для обратной совместимости)
 _getDomain() {
     local d=""
     [ -f "$configPath" ] && \
-        d=$(jq -r '.inbounds[0].streamSettings.xhttpSettings.host // ""' "$configPath" 2>/dev/null)
+        d=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // ""' "$configPath" 2>/dev/null)
     echo "$d"
 }
 
@@ -331,6 +331,7 @@ manageUsers() {
         echo -e "${green}2.${reset} $(msg users_del)"
         echo -e "${green}3.${reset} QR + Subscription URL"
         echo -e "${green}4.${reset} $(msg users_rename)"
+        echo -e "${green}5.${reset} $(msg menu_sub)"
         echo ""
         echo -e "${green}0.${reset} $(msg back)"
         echo ""
@@ -340,6 +341,7 @@ manageUsers() {
             2) deleteUser ;;
             3) showUserQR ;;
             4) renameUser ;;
+            5) rebuildAllSubFiles ;;
             0) break ;;
         esac
         [ "$choice" = "0" ] && continue
