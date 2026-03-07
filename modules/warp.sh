@@ -51,12 +51,29 @@ configWarp() {
 applyWarpDomains() {
     [ ! -f "$warpDomainsFile" ] && printf 'openai.com\nchatgpt.com\noaistatic.com\noaiusercontent.com\nauth0.openai.com\n' > "$warpDomainsFile"
     local domains_json
-    domains_json=$(awk 'NF {printf "\"domain:%s\",", $1}' "$warpDomainsFile" | sed 's/,$//')
+    # Читаем домены, убираем случайный двойной префикс domain:domain:
+    domains_json=$(awk 'NF {
+        gsub(/^domain:/, "", $1)
+        printf "\"domain:%s\",", $1
+    }' "$warpDomainsFile" | sed 's/,$//')
+
+    local warp_rule="{\"type\":\"field\",\"domain\":[$domains_json],\"outboundTag\":\"warp\"}"
 
     for cfg in "$configPath" "$realityConfigPath"; do
         [ -f "$cfg" ] || continue
-        jq "(.routing.rules[] | select(.outboundTag == \"warp\")) |= (.domain = [$domains_json] | del(.port))" \
-            "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+        local has_rule
+        has_rule=$(jq '.routing.rules[] | select(.outboundTag=="warp")' "$cfg" 2>/dev/null)
+        if [ -z "$has_rule" ]; then
+            # Правила нет — вставляем после block (индекс 0)
+            jq --argjson r "$warp_rule" \
+                '.routing.rules = [.routing.rules[0]] + [$r] + .routing.rules[1:]' \
+                "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+        else
+            # Правило есть — обновляем домены, убираем port
+            jq --argjson doms "[$domains_json]" \
+                '(.routing.rules[] | select(.outboundTag == "warp")) |= (.domain = $doms | del(.port))' \
+                "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+        fi
     done
     systemctl restart xray 2>/dev/null || true
     systemctl restart xray-reality 2>/dev/null || true
@@ -72,10 +89,19 @@ toggleWarpMode() {
 
     case "$warp_mode" in
         1)
+            local warp_global='{"type":"field","port":"0-65535","outboundTag":"warp"}'
             for cfg in "$configPath" "$realityConfigPath"; do
                 [ -f "$cfg" ] || continue
-                jq '(.routing.rules[] | select(.outboundTag == "warp")) |= (.port = "0-65535" | del(.domain))' \
-                    "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+                local has_rule
+                has_rule=$(jq '.routing.rules[] | select(.outboundTag=="warp")' "$cfg" 2>/dev/null)
+                if [ -z "$has_rule" ]; then
+                    jq --argjson r "$warp_global" \
+                        '.routing.rules = [.routing.rules[0]] + [$r] + .routing.rules[1:]' \
+                        "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+                else
+                    jq '(.routing.rules[] | select(.outboundTag == "warp")) |= (.port = "0-65535" | del(.domain))' \
+                        "$cfg" > "${cfg}.tmp" && mv "${cfg}.tmp" "$cfg"
+                fi
             done
             echo "${green}$(msg warp_global_ok)${reset}"
             systemctl restart xray 2>/dev/null || true
