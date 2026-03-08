@@ -211,11 +211,9 @@ manageWs() {
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  $(printf "%-8s" "Nginx:")$s_nginx,  SSL: $s_ssl,  CF Guard: $s_cfguard"
         if [ "$s_transport" = "grpc" ]; then
-            echo -e "  $(printf "%-8s" "gRPC:")${green}ACTIVE${reset} [$s_grpc],  $(msg lbl_port): ${green}$s_grpc_port${reset},  $(msg lbl_service): ${green}$s_grpc_svc${reset}"
-            echo -e "  $(printf "%-8s" "WS:")${yellow}standby${reset} [$s_ws]"
+            echo -e "  $(printf "%-8s" "Xray:")$s_grpc [${green}gRPC${reset}],  $(msg lbl_port): ${green}$s_grpc_port${reset},  $(msg lbl_service): ${green}$s_grpc_svc${reset}"
         else
-            echo -e "  $(printf "%-8s" "WS:")${green}ACTIVE${reset} [$s_ws],  $(msg lbl_port): ${green}$s_port${reset},  $(msg lbl_path): ${green}$s_path${reset}"
-            [ -f "$grpcConfigPath" ] && echo -e "  $(printf "%-8s" "gRPC:")${yellow}standby${reset} [$s_grpc]"
+            echo -e "  $(printf "%-8s" "Xray:")$s_ws [${green}WS${reset}],  $(msg lbl_port): ${green}$s_port${reset},  $(msg lbl_path): ${green}$s_path${reset}"
         fi
         echo -e "  $(printf "%-8s" "WARP:")$s_warp,  $(msg lbl_domain): ${green}$s_domain${reset}"
         [ -n "$s_connect" ] && echo -e "  $(printf "%-8s" "CDN:")${green}${s_connect}${reset}"
