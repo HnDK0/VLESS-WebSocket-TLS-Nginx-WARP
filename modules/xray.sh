@@ -57,6 +57,7 @@ writeXrayConfig() {
     fi
     [ -z "$new_uuid" ] && new_uuid=$(cat /proc/sys/kernel/random/uuid)
     mkdir -p /usr/local/etc/xray /var/log/xray
+    chmod 755 /var/log/xray
 
     cat > "$configPath" << EOF
 {
@@ -472,6 +473,7 @@ writeGrpcConfig() {
     fi
     [ -z "$new_uuid" ] && new_uuid=$(cat /proc/sys/kernel/random/uuid)
     mkdir -p /usr/local/etc/xray /var/log/xray
+    chmod 755 /var/log/xray
 
     cat > "$grpcConfigPath" << GRPCEOF
 {
@@ -649,7 +651,7 @@ getGrpcShareUrl() {
     flag=$(_getCountryFlag "$server_ip")
     name="${flag} VL-gRPC-CDN | ${label} ${flag}"
     encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
-    echo "vless://${uuid}@${connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${grpcService}&mode=gun#${encoded_name}"
+    echo "vless://${uuid}@${connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${grpcService}&mode=gun&host=${domain}#${encoded_name}"
 }
 
 

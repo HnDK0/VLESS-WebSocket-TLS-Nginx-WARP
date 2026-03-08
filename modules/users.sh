@@ -134,7 +134,7 @@ buildUserSubFile() {
         [ -z "$g_connect_host" ] && g_connect_host="$domain"
         g_name="${flag} VL-gRPC-CDN | ${label} ${flag}"
         g_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$g_name" 2>/dev/null || echo "$g_name")
-        lines+="vless://${gs}@${g_connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${gp}&mode=gun#${g_encoded_name}"$'\n'
+        lines+="vless://${gs}@${g_connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${gp}&mode=gun&host=${domain}#${g_encoded_name}"$'\n'
     fi
 
     if [ -f "$realityConfigPath" ]; then
@@ -334,7 +334,7 @@ showUserQR() {
         [ -z "$g_connect_host" ] && g_connect_host="$domain"
         g_name="${flag} VL-gRPC-CDN | ${label} ${flag}"
         g_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$g_name" 2>/dev/null || echo "$g_name")
-        g_url="vless://${gs}@${g_connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${gp}&mode=gun#${g_encoded_name}"
+        g_url="vless://${gs}@${g_connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${gp}&mode=gun&host=${domain}#${g_encoded_name}"
 
         echo -e "
 ${cyan}================================================================${reset}"
