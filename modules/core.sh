@@ -15,7 +15,6 @@ reset=$(tput sgr0)
 
 # Пути конфигов
 configPath='/usr/local/etc/xray/config.json'
-grpcConfigPath='/usr/local/etc/xray/config-grpc.json'
 realityConfigPath='/usr/local/etc/xray/reality.json'
 nginxPath='/etc/nginx/conf.d/xray.conf'
 cf_key_file="/root/.cloudflare_api"

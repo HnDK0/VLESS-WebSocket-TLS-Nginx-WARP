@@ -34,6 +34,16 @@ setupFail2Ban() {
     ssh_port=$(grep -E "^Port " /etc/ssh/sshd_config | awk '{print $2}' | head -1)
     ssh_port="${ssh_port:-22}"
 
+    # Определяем backend: если auth.log существует — auto, иначе systemd (Ubuntu 22.04+)
+    local sshd_backend sshd_logpath
+    if [ -f /var/log/auth.log ]; then
+        sshd_backend="auto"
+        sshd_logpath="logpath  = /var/log/auth.log"
+    else
+        sshd_backend="systemd"
+        sshd_logpath=""
+    fi
+
     cat > /etc/fail2ban/jail.local << EOF
 [DEFAULT]
 bantime  = 2h
@@ -44,7 +54,8 @@ maxretry = 5
 enabled  = true
 port     = $ssh_port
 filter   = sshd
-logpath  = /var/log/auth.log
+backend  = $sshd_backend
+$sshd_logpath
 maxretry = 3
 bantime  = 24h
 EOF

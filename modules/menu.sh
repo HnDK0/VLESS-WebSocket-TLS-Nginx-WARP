@@ -27,7 +27,7 @@ prepareSoftwareWs() {
     run_task "Системные параметры" applySysctl
 }
 
-# Установка VLESS + WS/gRPC + TLS + Nginx + WARP + CDN
+# Установка VLESS + WebSocket + TLS + Nginx + WARP + CDN
 installWsTls() {
     isRoot
     clear
@@ -66,20 +66,6 @@ installWsTls() {
     local xhttpPath
     xhttpPath=$(generateRandomPath)
 
-    # Порт gRPC
-    local grpcPort
-    while true; do
-        read -rp "$(msg enter_grpc_port)" grpcPort
-        [ -z "$grpcPort" ] && grpcPort=16501
-        if ! _validatePort "$grpcPort" &>/dev/null; then
-            echo "${red}$(msg invalid_port) (1024-65535)${reset}"; continue
-        fi
-        [ "$grpcPort" = "$xrayPort" ] && { echo "${red}$(msg port_conflict)${reset}"; continue; }
-        break
-    done
-    local grpcService
-    grpcService=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12)
-
     # URL заглушки
     local proxyUrl validated_url
     while true; do
@@ -93,10 +79,8 @@ installWsTls() {
     done
 
     echo -e "\n${green}---${reset}"
-    run_task "Создание конфига Xray WS"    "writeXrayConfig '$xrayPort' '$xhttpPath' '$userDomain'"
-    run_task "Создание конфига Xray gRPC" "writeGrpcConfig '$grpcPort' '$grpcService' '$userDomain'"
-    run_task "Настройка сервиса xray-grpc" setupGrpcService
-    run_task "Создание конфига Nginx"  "writeNginxConfig '$xrayPort' '$userDomain' '$proxyUrl' '$xhttpPath' '$grpcPort' '$grpcService'"
+    run_task "Создание конфига Xray"   "writeXrayConfig '$xrayPort' '$xhttpPath' '$userDomain'"
+    run_task "Создание конфига Nginx"  "writeNginxConfig '$xrayPort' '$userDomain' '$proxyUrl' '$xhttpPath'"
     run_task "Настройка WARP"          configWarp
     run_task "Выпуск SSL"              "userDomain='$userDomain' configCert"
     run_task "Применение правил WARP"  applyWarpDomains
@@ -144,7 +128,7 @@ fullRemove() {
     echo -e "${red}$(msg remove_confirm) $(msg yes_no)${reset}"
     read -r confirm
     if [[ "$confirm" == "y" ]]; then
-        systemctl stop nginx xray xray-grpc xray-reality warp-svc psiphon tor 2>/dev/null || true
+        systemctl stop nginx xray xray-reality warp-svc psiphon tor 2>/dev/null || true
         warp-cli disconnect 2>/dev/null || true
         [ -z "${PACKAGE_MANAGEMENT_REMOVE:-}" ] && identifyOS
         uninstallPackage 'nginx*' || true
@@ -152,7 +136,6 @@ fullRemove() {
         bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
         systemctl disable xray-reality psiphon 2>/dev/null || true
         rm -f /etc/systemd/system/xray-reality.service
-        rm -f /etc/systemd/system/xray-grpc.service
         rm -f /etc/systemd/system/psiphon.service
         rm -f "$torDomainsFile"
         rm -f "$psiphonBin"
@@ -170,13 +153,12 @@ removeWs() {
     echo -e "${red}$(msg remove_confirm) $(msg yes_no)${reset}"
     read -r confirm
     [[ "$confirm" != "y" ]] && return 0
-    systemctl stop nginx xray xray-grpc 2>/dev/null || true
-    systemctl disable nginx xray xray-grpc 2>/dev/null || true
+    systemctl stop nginx xray 2>/dev/null || true
+    systemctl disable nginx xray 2>/dev/null || true
     [ -z "${PACKAGE_MANAGEMENT_REMOVE:-}" ] && identifyOS
     uninstallPackage 'nginx*' || true
     bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ remove || true
-    rm -f /etc/systemd/system/xray-grpc.service
-    rm -rf /etc/nginx /usr/local/etc/xray/config.json /usr/local/etc/xray/config-grpc.json \
+    rm -rf /etc/nginx /usr/local/etc/xray/config.json \
            /usr/local/etc/xray/sub /usr/local/etc/xray/users.conf \
            /etc/cron.d/acme-renew /etc/cron.d/clear-logs \
            /usr/local/bin/clear-logs.sh /etc/sysctl.d/99-xray.conf
@@ -188,57 +170,43 @@ manageWs() {
     set +e
     while true; do
         clear
-        local s_nginx s_ws s_grpc s_ssl s_cfguard s_domain s_connect s_warp s_port s_path s_grpc_port s_grpc_svc s_transport
+        local s_nginx s_ws s_ssl s_cfguard s_domain s_connect s_warp s_port s_path
         s_nginx=$(getServiceStatus nginx)
         s_ws=$(getServiceStatus xray)
-        s_grpc=$(getServiceStatus xray-grpc)
         s_ssl=$(checkCertExpiry)
         s_cfguard=$(getCfGuardStatus)
         s_warp=$(getWarpStatus)
         s_domain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // .inbounds[0].streamSettings.xhttpSettings.host // "—"' "$configPath" 2>/dev/null)
         s_connect=$(cat "$CONNECT_HOST_FILE" 2>/dev/null | tr -d '[:space:]')
         s_port=$(jq -r '.inbounds[0].port // "—"' "$configPath" 2>/dev/null)
-        s_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // "—"' "$configPath" 2>/dev/null)
-        s_grpc_port=$(jq -r '.inbounds[0].port // "—"' "$grpcConfigPath" 2>/dev/null)
-        s_grpc_svc=$(jq -r '.inbounds[0].streamSettings.grpcSettings.serviceName // "—"' "$grpcConfigPath" 2>/dev/null)
-        s_transport=$(getActiveTransport)
+        s_path=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // "—"' "$configPath" 2>/dev/null)
         # Обрезаем длинные значения
         [ ${#s_connect} -gt 35 ] && s_connect="${s_connect:0:32}..."
         [ ${#s_domain} -gt 30 ]  && s_domain="${s_domain:0:27}..."
 
         echo -e "${cyan}================================================================${reset}"
-        printf "   ${red}VLESS + WS/gRPC + Nginx${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
+        echo -e "${cyan}================================================================${reset}"
+        printf "   ${red}WebSocket + TLS + Nginx${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  $(printf "%-8s" "Nginx:")$s_nginx,  SSL: $s_ssl,  CF Guard: $s_cfguard"
-        if [ "$s_transport" = "grpc" ]; then
-            echo -e "  $(printf "%-8s" "Xray:")$s_grpc [${green}gRPC${reset}],  $(msg lbl_port): ${green}$s_grpc_port${reset},  $(msg lbl_service): ${green}$s_grpc_svc${reset}"
-        else
-            echo -e "  $(printf "%-8s" "Xray:")$s_ws [${green}WS${reset}],  $(msg lbl_port): ${green}$s_port${reset},  $(msg lbl_path): ${green}$s_path${reset}"
-        fi
-        echo -e "  $(printf "%-8s" "WARP:")$s_warp,  $(msg lbl_domain): ${green}$s_domain${reset}"
-        [ -n "$s_connect" ] && echo -e "  $(printf "%-8s" "CDN:")${green}${s_connect}${reset}"
+        echo -e "  $(printf "%-7s" "Nginx:")$s_nginx,  SSL: ${green}$s_ssl_plain${reset},  CF Guard: $s_cfguard"
+        echo -e "  $(printf "%-7s" "Xray:")$s_ws,  $(msg lbl_port): ${green}$s_port${reset},  $(msg lbl_path): ${green}$s_path${reset}"
+        echo -e "  $(printf "%-7s" "WARP:")$s_warp,  $(msg lbl_domain): ${green}$s_domain${reset}"
+        [ -n "$s_connect" ] && echo -e "  $(printf "%-7s" "CDN:")${green}${s_connect}${reset}"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  ${cyan}── WS ──────────────────────────────────────────────────────${reset}"
         echo -e "  ${green}1.${reset}  $(msg menu_port)"
         echo -e "  ${green}2.${reset}  $(msg menu_wspath)"
-        echo -e "  ${cyan}── gRPC ────────────────────────────────────────────────────${reset}"
-        echo -e "  ${green}3.${reset}  $(msg menu_grpc_port)"
-        echo -e "  ${green}4.${reset}  $(msg menu_grpc_path)"
-        echo -e "  ${cyan}── $(msg lbl_transport) ──────────────────────────────────────────────${reset}"
-        echo -e "  ${green}5.${reset}  $(msg menu_grpc_switch)"
-        echo -e "  ${cyan}── Nginx / SSL ─────────────────────────────────────────────${reset}"
-        echo -e "  ${green}6.${reset}  $(msg menu_domain)"
-        echo -e "  ${green}7.${reset}  $(msg menu_cdn_host)"
-        echo -e "  ${green}8.${reset}  $(msg menu_ssl)"
-        echo -e "  ${green}9.${reset}  $(msg menu_stub)"
-        echo -e "  ${green}10.${reset} $(msg menu_cfguard)"
-        echo -e "  ${green}11.${reset} $(msg menu_cf_update_ip)"
-        echo -e "  ${green}12.${reset} $(msg menu_ssl_cron)"
-        echo -e "  ${green}13.${reset} $(msg menu_log_cron)"
-        echo -e "  ${green}14.${reset} $(msg menu_uuid)"
+        echo -e "  ${green}3.${reset}  $(msg menu_domain)"
+        echo -e "  ${green}4.${reset}  $(msg menu_cdn_host)"
+        echo -e "  ${green}5.${reset}  $(msg menu_ssl)"
+        echo -e "  ${green}6.${reset}  $(msg menu_stub)"
+        echo -e "  ${green}7.${reset}  $(msg menu_cfguard)"
+        echo -e "  ${green}8.${reset}  $(msg menu_cf_update_ip)"
+        echo -e "  ${green}9.${reset}  $(msg menu_ssl_cron)"
+        echo -e "  ${green}10.${reset} $(msg menu_log_cron)"
+        echo -e "  ${green}11.${reset} $(msg menu_uuid)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  ${green}15.${reset} $(msg menu_install)"
-        echo -e "  ${green}16.${reset} $(msg menu_remove)"
+        echo -e "  ${green}12.${reset} $(msg menu_install)"
+        echo -e "  ${green}13.${reset} $(msg menu_remove)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  ${green}0.${reset}  $(msg back)"
         echo -e "${cyan}================================================================${reset}"
@@ -246,20 +214,17 @@ manageWs() {
         case $choice in
             1)  modifyXrayPort ;;
             2)  modifyWsPath ;;
-            3)  modifyGrpcPort ;;
-            4)  modifyGrpcPath ;;
-            5)  switchTransport ;;
-            6)  modifyDomain ;;
-            7)  modifyConnectHost ;;
-            8)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
-            9)  modifyProxyPassUrl ;;
-            10) toggleCfGuard ;;
-            11) setupRealIpRestore && { [ -f /etc/nginx/conf.d/cf_guard.conf ] && _fetchCfGuardIPs; } && nginx -t && systemctl reload nginx ;;
-            12) manageSslCron ;;
-            13) manageLogClearCron ;;
-            14) modifyXrayUUID ;;
-            15) install ;;
-            16) removeWs ;;
+            3)  modifyDomain ;;
+            4)  modifyConnectHost ;;
+            5)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
+            6)  modifyProxyPassUrl ;;
+            7)  toggleCfGuard ;;
+            8)  setupRealIpRestore && { [ -f /etc/nginx/conf.d/cf_guard.conf ] && _fetchCfGuardIPs; } && nginx -t && systemctl reload nginx ;;
+            9)  manageSslCron ;;
+            10) manageLogClearCron ;;
+            11) modifyXrayUUID ;;
+            12) install ;;
+            13) removeWs ;;
             0)  break ;;
         esac
         [ "$choice" = "0" ] && continue
@@ -315,16 +280,7 @@ menu() {
         printf "   ${red}VWN — Xray Management Panel${reset}  %s\n" "$(date +'%d.%m.%Y %H:%M')"
         echo -e "${cyan}================================================================${reset}"
         echo -e "  ${cyan}── $(msg menu_sep_proto_short) ──────────────────────────────────────────${reset}"
-        # Определяем активный транспорт для главного меню
-        local s_transport_label s_transport_svc
-        if [ "$(getActiveTransport 2>/dev/null || echo ws)" = "grpc" ]; then
-            s_transport_label="${green}gRPC${reset}"
-            s_transport_svc=$(getServiceStatus xray-grpc)
-        else
-            s_transport_label="${green}WS${reset}"
-            s_transport_svc=$s_ws
-        fi
-        echo -e "  $(printf "%-9s" "Xray:")$(_pval "$s_transport_svc" 7) [$s_transport_label],  WARP: $s_warp"
+        echo -e "  $(printf "%-9s" "WS:")$s_ws_c,  WARP: $s_warp"
         echo -e "  $(printf "%-9s" "Reality:")$s_reality_c,  SSL: $s_ssl"
         echo -e "  $(printf "%-9s" "Nginx:")$s_nginx_c,  CF Guard: $s_cfguard"
         [ -n "$s_connect" ] && echo -e "  CDN: ${green}${s_connect}${reset}"
@@ -398,7 +354,7 @@ menu() {
             21) tail -n 80 /var/log/nginx/access.log 2>/dev/null || echo "$(msg no_logs)" ;;
             22) tail -n 80 /var/log/nginx/error.log 2>/dev/null || echo "$(msg no_logs)" ;;
             23) clearLogs ;;
-            24) systemctl restart xray xray-grpc xray-reality nginx warp-svc psiphon tor 2>/dev/null || true
+            24) systemctl restart xray xray-reality nginx warp-svc psiphon tor 2>/dev/null || true
                 echo "${green}$(msg all_services_restarted)${reset}" ;;
             25) updateXrayCore ;;
             26) manageDiag ;;

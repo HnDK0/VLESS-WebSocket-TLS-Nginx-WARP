@@ -129,36 +129,6 @@ _diagXray() {
     else
         _skip "Reality $(msg diag_not_installed)"
     fi
-
-    # gRPC конфиг
-    if [ -f "$grpcConfigPath" ]; then
-        if xray -test -config "$grpcConfigPath" &>/dev/null; then
-            _pass "$(msg diag_grpc_config_ok)"
-        else
-            _fail "$(msg diag_grpc_config_bad)"
-            xray -test -config "$grpcConfigPath" 2>&1 | head -5 | sed 's/^/      /'
-        fi
-        local active_transport
-        active_transport=$(getActiveTransport 2>/dev/null || echo "ws")
-        if [ "$active_transport" = "grpc" ]; then
-            if systemctl is-active --quiet xray-grpc 2>/dev/null; then
-                _pass "$(msg diag_grpc_running)"
-            else
-                _fail "$(msg diag_grpc_stopped)"
-            fi
-            local grpc_port
-            grpc_port=$(jq -r '.inbounds[0].port' "$grpcConfigPath" 2>/dev/null)
-            if ss -tlnp 2>/dev/null | grep -q ":${grpc_port}"; then
-                _pass "$(msg diag_port_listen): $grpc_port (gRPC)"
-            else
-                _fail "$(msg diag_port_not_listen): $grpc_port (gRPC)"
-            fi
-        else
-            _skip "gRPC ($(msg diag_transport_inactive))"
-        fi
-    else
-        _skip "gRPC $(msg diag_not_installed)"
-    fi
     echo ""
 }
 

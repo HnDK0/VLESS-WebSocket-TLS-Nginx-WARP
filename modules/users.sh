@@ -112,29 +112,15 @@ buildUserSubFile() {
     server_ip=$(getServerIP)
     flag=$(_getCountryFlag "$server_ip")
 
-    local active_transport
-    active_transport=$(getActiveTransport 2>/dev/null || echo "ws")
-
-    if [ "$active_transport" = "ws" ] && [ -f "$configPath" ] && [ -n "$domain" ]; then
+    if [ -f "$configPath" ] && [ -n "$domain" ]; then
         local wp wep name encoded_name connect_host
-        wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // ""' "$configPath" 2>/dev/null)
+        wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
         wep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))" "$wp" 2>/dev/null || echo "$wp")
         connect_host=$(getConnectHost 2>/dev/null || echo "$domain")
         [ -z "$connect_host" ] && connect_host="$domain"
         name="${flag} VL-WS-CDN | ${label} ${flag}"
         encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$name" 2>/dev/null || echo "$name")
         lines+="vless://${uuid}@${connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=ws&host=${domain}&path=${wep}#${encoded_name}"$'\n'
-    fi
-
-    if [ "$active_transport" = "grpc" ] && [ -f "$grpcConfigPath" ] && [ -n "$domain" ]; then
-        local gp gs g_name g_encoded_name g_connect_host
-        gp=$(jq -r '.inbounds[0].streamSettings.grpcSettings.serviceName' "$grpcConfigPath" 2>/dev/null)
-        gs=$(jq -r '.inbounds[0].settings.clients[0].id' "$grpcConfigPath" 2>/dev/null)
-        g_connect_host=$(getConnectHost 2>/dev/null || echo "$domain")
-        [ -z "$g_connect_host" ] && g_connect_host="$domain"
-        g_name="${flag} VL-gRPC-CDN | ${label} ${flag}"
-        g_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$g_name" 2>/dev/null || echo "$g_name")
-        lines+="vless://${gs}@${g_connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${gp}&mode=gun&host=${domain}#${g_encoded_name}"$'\n'
     fi
 
     if [ -f "$realityConfigPath" ]; then
@@ -283,13 +269,11 @@ showUserQR() {
 
     local domain
     domain=$(_getDomain)
-    local active_transport
-    active_transport=$(getActiveTransport 2>/dev/null || echo "ws")
 
     # WebSocket
-    if [ "$active_transport" = "ws" ] && [ -f "$configPath" ] && [ -n "$domain" ]; then
+    if [ -f "$configPath" ] && [ -n "$domain" ]; then
         local wp wep url_ws server_ip flag name encoded_name connect_host
-        wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // ""' "$configPath" 2>/dev/null)
+        wp=$(jq -r '.inbounds[0].streamSettings.wsSettings.path // .inbounds[0].streamSettings.xhttpSettings.path // ""' "$configPath" 2>/dev/null)
         wep=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1],safe='/'))" "$wp" 2>/dev/null || echo "$wp")
         server_ip=$(getServerIP)
         flag=$(_getCountryFlag "$server_ip")
@@ -322,43 +306,6 @@ showUserQR() {
     headers:
       Host: ${domain}${reset}\n"
 
-        echo -e "${cyan}================================================================${reset}"
-    fi
-
-    # gRPC
-    if [ "$active_transport" = "grpc" ] && [ -f "$grpcConfigPath" ] && [ -n "$domain" ]; then
-        local gp gs g_name g_encoded_name g_url g_connect_host
-        gp=$(jq -r '.inbounds[0].streamSettings.grpcSettings.serviceName' "$grpcConfigPath" 2>/dev/null)
-        gs=$(jq -r '.inbounds[0].settings.clients[0].id' "$grpcConfigPath" 2>/dev/null)
-        g_connect_host=$(getConnectHost 2>/dev/null || echo "$domain")
-        [ -z "$g_connect_host" ] && g_connect_host="$domain"
-        g_name="${flag} VL-gRPC-CDN | ${label} ${flag}"
-        g_encoded_name=$(python3 -c "import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1]))" "$g_name" 2>/dev/null || echo "$g_name")
-        g_url="vless://${gs}@${g_connect_host}:443?encryption=none&security=tls&sni=${domain}&fp=chrome&type=grpc&serviceName=${gp}&mode=gun&host=${domain}#${g_encoded_name}"
-
-        echo -e "
-${cyan}================================================================${reset}"
-        echo -e "   ${g_name}"
-        echo -e "${cyan}================================================================${reset}
-"
-        echo -e "${cyan}[ URI (v2rayNG / Hiddify / Nekoray) ]${reset}"
-        qrencode -s 1 -m 1 -t ANSIUTF8 "$g_url" 2>/dev/null || true
-        echo -e "
-${green}${g_url}${reset}
-"
-        echo -e "${cyan}[ Clash Meta / Mihomo ]${reset}"
-        echo -e "${yellow}- name: ${g_name}
-  type: vless
-  server: ${g_connect_host}
-  port: 443
-  uuid: ${gs}
-  tls: true
-  servername: ${domain}
-  client-fingerprint: chrome
-  network: grpc
-  grpc-opts:
-    grpc-service-name: ${gp}${reset}
-"
         echo -e "${cyan}================================================================${reset}"
     fi
 

@@ -29,8 +29,6 @@ writeNginxConfig() {
     local domain="$2"
     local proxyUrl="$3"
     local wsPath="$4"
-    local grpcPort="${5:-16501}"
-    local grpcService="${6:-grpc}"
 
     local proxy_host
     proxy_host=$(echo "$proxyUrl" | sed 's|https://||;s|http://||;s|/.*||')
@@ -141,20 +139,6 @@ server {
         add_header Cache-Control 'no-cache, no-store, must-revalidate';
     }
 
-    # gRPC — активен только при listen 443 ssl http2
-    location /${grpcService}/Tun {
-        if (\$content_type !~ "^application/grpc") { return 404; }
-        client_body_timeout 1w;
-        grpc_pass grpc://127.0.0.1:${grpcPort};
-        grpc_set_header Host \$host;
-        grpc_set_header X-Real-IP \$remote_addr;
-        grpc_set_header TE trailers;
-        grpc_read_timeout 1w;
-        grpc_send_timeout 1w;
-        grpc_connect_timeout 10s;
-        client_max_body_size 0;
-    }
-
     location / {
         proxy_pass $proxyUrl;
         proxy_http_version 1.1;
@@ -184,7 +168,6 @@ MAPEOF
     # Восстанавливаем реальный IP — всегда нужно при Cloudflare
     setupRealIpRestore
 }
-
 
 # Восстановление реального IP клиента из CF-Connecting-IP.
 # Вызывается автоматически при writeNginxConfig.
