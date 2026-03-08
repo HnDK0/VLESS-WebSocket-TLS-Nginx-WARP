@@ -27,97 +27,8 @@ prepareSoftwareWs() {
     run_task "Системные параметры" applySysctl
 }
 
-# Добавляет gRPC к уже существующей WS-установке (без переустановки)
-addGrpcToExisting() {
-    isRoot
-
-    # Проверяем что WS уже установлен
-    if [ ! -f "$configPath" ]; then
-        echo "${red}$(msg xray_not_installed)${reset}"
-        return 1
-    fi
-
-    if [ -f "$grpcConfigPath" ]; then
-        echo "${yellow}$(msg grpc_already_exists)${reset}"
-        read -rp "$(msg grpc_reinit_confirm) $(msg yes_no) " confirm
-        [[ "$confirm" != "y" ]] && return 0
-    fi
-
-    echo -e "${cyan}=== $(msg grpc_add_title) ===${reset}\n"
-
-    # Порт gRPC
-    local grpcPort
-    while true; do
-        read -rp "$(msg enter_grpc_port)" grpcPort
-        [ -z "$grpcPort" ] && grpcPort=16501
-        if ! _validatePort "$grpcPort" &>/dev/null; then
-            echo "${red}$(msg invalid_port) (1024-65535)${reset}"; continue
-        fi
-        local ws_port
-        ws_port=$(jq -r '.inbounds[0].port' "$configPath" 2>/dev/null)
-        [ "$grpcPort" = "$ws_port" ] && { echo "${red}$(msg port_conflict)${reset}"; continue; }
-        break
-    done
-
-    local grpcService
-    grpcService=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12)
-    echo -e "${cyan}$(msg lbl_service): ${green}${grpcService}${reset}"
-
-    # Получаем домен из текущего конфига
-    local domain
-    domain=$(jq -r '.inbounds[0].streamSettings.wsSettings.host // ""' "$configPath" 2>/dev/null)
-    [ -z "$domain" ] || [ "$domain" = "null" ] && \
-        domain=$(grep -E '^\s*server_name\s+' "$nginxPath" 2>/dev/null | grep -v '_' | awk '{print $2}' | tr -d ';' | head -1)
-
-    echo ""
-    run_task "$(msg grpc_create_config)"  "writeGrpcConfig '$grpcPort' '$grpcService'"
-    run_task "$(msg grpc_setup_service)"  "setupGrpcService"
-    run_task "$(msg grpc_update_nginx)"   "_addGrpcLocationToNginx '$grpcPort' '$grpcService'"
-
-    echo -e "\n${green}$(msg grpc_added_ok)${reset}"
-    echo -e "$(msg lbl_port): ${green}${grpcPort}${reset},  $(msg lbl_service): ${green}${grpcService}${reset}"
-    echo -e "${cyan}$(msg grpc_switch_hint)${reset}"
-}
-
-# Добавляет location gRPC в существующий nginx конфиг (не перезаписывает весь файл)
-_addGrpcLocationToNginx() {
-    local grpcPort="$1"
-    local grpcService="$2"
-
-    [ ! -f "$nginxPath" ] && { echo "${red}$(msg nginx_not_found)${reset}"; return 1; }
-
-    # Убираем старый gRPC location если есть
-    python3 - "$nginxPath" "$grpcPort" "$grpcService" << 'PYEOF'
-import sys, re
-path, port, svc = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(path) as f:
-    c = f.read()
-# Удаляем старый gRPC location если есть
-c = re.sub(r'\n\s+location /[A-Za-z0-9_-]+/Tun \{[^}]+\}\n', '\n', c)
-# Вставляем новый перед закрывающим }  сервера
-grpc_block = f"""
-    location /{svc}/Tun {{
-        grpc_pass grpc://127.0.0.1:{port};
-        grpc_set_header Host $host;
-        grpc_set_header X-Real-IP $remote_addr;
-        grpc_read_timeout 3600s;
-        grpc_send_timeout 3600s;
-        grpc_connect_timeout 10s;
-        client_max_body_size 0;
-    }}
-"""
-# Вставляем перед последним } в файле
-c = c.rstrip()
-last_brace = c.rfind('}')
-c = c[:last_brace] + grpc_block + c[last_brace:]
-with open(path, 'w') as f:
-    f.write(c)
-PYEOF
-
-    nginx -t && systemctl reload nginx
-}
-
-
+# Установка VLESS + WS/gRPC + TLS + Nginx + WARP + CDN
+installWsTls() {
     isRoot
     clear
     identifyOS
@@ -304,7 +215,8 @@ manageWs() {
             echo -e "  $(printf "%-8s" "WS:")${yellow}standby${reset} [$s_ws]"
         else
             echo -e "  $(printf "%-8s" "WS:")${green}ACTIVE${reset} [$s_ws],  $(msg lbl_port): ${green}$s_port${reset},  $(msg lbl_path): ${green}$s_path${reset}"
-            [ -f "$grpcConfigPath" ] && echo -e "  $(printf "%-8s" "gRPC:")${yellow}standby${reset} [$s_grpc]"        fi
+            [ -f "$grpcConfigPath" ] && echo -e "  $(printf "%-8s" "gRPC:")${yellow}standby${reset} [$s_grpc]"
+        fi
         echo -e "  $(printf "%-8s" "WARP:")$s_warp,  $(msg lbl_domain): ${green}$s_domain${reset}"
         [ -n "$s_connect" ] && echo -e "  $(printf "%-8s" "CDN:")${green}${s_connect}${reset}"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
@@ -314,22 +226,21 @@ manageWs() {
         echo -e "  ${cyan}── gRPC ────────────────────────────────────────────────────${reset}"
         echo -e "  ${green}3.${reset}  $(msg menu_grpc_port)"
         echo -e "  ${green}4.${reset}  $(msg menu_grpc_path)"
-        echo -e "  ${green}5.${reset}  $(msg menu_grpc_init)"
         echo -e "  ${cyan}── $(msg lbl_transport) ──────────────────────────────────────────────${reset}"
-        echo -e "  ${green}6.${reset}  $(msg menu_grpc_switch)"
+        echo -e "  ${green}5.${reset}  $(msg menu_grpc_switch)"
         echo -e "  ${cyan}── Nginx / SSL ─────────────────────────────────────────────${reset}"
-        echo -e "  ${green}7.${reset}  $(msg menu_domain)"
-        echo -e "  ${green}8.${reset}  $(msg menu_cdn_host)"
-        echo -e "  ${green}9.${reset}  $(msg menu_ssl)"
-        echo -e "  ${green}10.${reset} $(msg menu_stub)"
-        echo -e "  ${green}11.${reset} $(msg menu_cfguard)"
-        echo -e "  ${green}12.${reset} $(msg menu_cf_update_ip)"
-        echo -e "  ${green}13.${reset} $(msg menu_ssl_cron)"
-        echo -e "  ${green}14.${reset} $(msg menu_log_cron)"
-        echo -e "  ${green}15.${reset} $(msg menu_uuid)"
+        echo -e "  ${green}6.${reset}  $(msg menu_domain)"
+        echo -e "  ${green}7.${reset}  $(msg menu_cdn_host)"
+        echo -e "  ${green}8.${reset}  $(msg menu_ssl)"
+        echo -e "  ${green}9.${reset}  $(msg menu_stub)"
+        echo -e "  ${green}10.${reset} $(msg menu_cfguard)"
+        echo -e "  ${green}11.${reset} $(msg menu_cf_update_ip)"
+        echo -e "  ${green}12.${reset} $(msg menu_ssl_cron)"
+        echo -e "  ${green}13.${reset} $(msg menu_log_cron)"
+        echo -e "  ${green}14.${reset} $(msg menu_uuid)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
-        echo -e "  ${green}16.${reset} $(msg menu_install)"
-        echo -e "  ${green}17.${reset} $(msg menu_remove)"
+        echo -e "  ${green}15.${reset} $(msg menu_install)"
+        echo -e "  ${green}16.${reset} $(msg menu_remove)"
         echo -e "${cyan}----------------------------------------------------------------${reset}"
         echo -e "  ${green}0.${reset}  $(msg back)"
         echo -e "${cyan}================================================================${reset}"
@@ -339,19 +250,18 @@ manageWs() {
             2)  modifyWsPath ;;
             3)  modifyGrpcPort ;;
             4)  modifyGrpcPath ;;
-            5)  addGrpcToExisting ;;
-            6)  switchTransport ;;
-            7)  modifyDomain ;;
-            8)  modifyConnectHost ;;
-            9)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
-            10) modifyProxyPassUrl ;;
-            11) toggleCfGuard ;;
-            12) setupRealIpRestore && { [ -f /etc/nginx/conf.d/cf_guard.conf ] && _fetchCfGuardIPs; } && nginx -t && systemctl reload nginx ;;
-            13) manageSslCron ;;
-            14) manageLogClearCron ;;
-            15) modifyXrayUUID ;;
-            16) install ;;
-            17) removeWs ;;
+            5)  switchTransport ;;
+            6)  modifyDomain ;;
+            7)  modifyConnectHost ;;
+            8)  getConfigInfo && userDomain="$xray_userDomain" && configCert ;;
+            9)  modifyProxyPassUrl ;;
+            10) toggleCfGuard ;;
+            11) setupRealIpRestore && { [ -f /etc/nginx/conf.d/cf_guard.conf ] && _fetchCfGuardIPs; } && nginx -t && systemctl reload nginx ;;
+            12) manageSslCron ;;
+            13) manageLogClearCron ;;
+            14) modifyXrayUUID ;;
+            15) install ;;
+            16) removeWs ;;
             0)  break ;;
         esac
         [ "$choice" = "0" ] && continue
