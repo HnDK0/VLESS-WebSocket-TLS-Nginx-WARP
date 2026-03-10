@@ -285,8 +285,15 @@ configCert() {
     read -rp "$(msg ssl_your_choice)" cert_method
 
     installPackage "socat" || true
+
+
     if [ ! -f ~/.acme.sh/acme.sh ]; then
         curl -fsSL https://get.acme.sh | sh -s email="acme@${userDomain}"
+    fi
+
+    # Проверяем что acme.sh установился
+    if [ ! -f ~/.acme.sh/acme.sh ]; then
+        echo "${red}$(msg acme_install_fail)${reset}"; return 1
     fi
 
     ~/.acme.sh/acme.sh --upgrade --auto-upgrade

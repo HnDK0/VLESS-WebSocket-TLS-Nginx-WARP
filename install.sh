@@ -71,11 +71,14 @@ install_deps() {
     echo -e "${cyan}$(msg install_deps)${reset}"
     if command -v apt &>/dev/null; then
         apt-get update -qq
-        apt-get install -y --no-install-recommends curl jq bash coreutils 2>/dev/null || true
+        apt-get install -y --no-install-recommends curl jq bash coreutils cron 2>/dev/null || true
+        systemctl enable --now cron 2>/dev/null || true
     elif command -v dnf &>/dev/null; then
-        dnf install -y curl jq bash 2>/dev/null || true
+        dnf install -y curl jq bash cronie 2>/dev/null || true
+        systemctl enable --now crond 2>/dev/null || true
     elif command -v yum &>/dev/null; then
-        yum install -y curl jq bash 2>/dev/null || true
+        yum install -y curl jq bash cronie 2>/dev/null || true
+        systemctl enable --now crond 2>/dev/null || true
     fi
 }
 
